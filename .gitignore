@@ -1,0 +1,10 @@
+bin/
+obj/
+.build/
+game
+Graphics.af*
+
+*.sh
+*.txt
+*.c1
+*.h1
