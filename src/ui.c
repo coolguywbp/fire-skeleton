@@ -8,6 +8,8 @@
 
 void ui_main_menu(struct Game *G, Clay_Sizing *claySize);
 void ui_options_menu(struct Game *G, Clay_Sizing *claySize);
+void ui_level(struct Game *G, Clay_Sizing *claySize);
+
 void ui_fps(float frameRate);
 
 
@@ -15,7 +17,7 @@ Clay_String ToClayString(char* string);
 
 void ui_click_events(struct Game *G){
   if (Clay_PointerOver(Clay_GetElementId(ToClayString("StartButton")))){
-    G->state->sceneId = SCENE_LEVEL_1;
+    G->state->sceneId = SCENE_LEVEL;
   }
   if (Clay_PointerOver(Clay_GetElementId(ToClayString("OptionsButton")))){
     G->state->sceneId = SCENE_MAIN_MENU_OPTIONS;
@@ -39,7 +41,9 @@ bool ui_create_layout(struct Game *G) {
   case SCENE_MAIN_MENU_OPTIONS:
     ui_options_menu(G, &layoutExpand);
     break;
-
+  case SCENE_LEVEL:
+    ui_level(G, &layoutExpand);
+    break;
   default:
     ui_main_menu(G, &layoutExpand);
     break;
@@ -51,6 +55,15 @@ bool ui_create_layout(struct Game *G) {
   
   return true;
 };
+
+
+
+
+void ui_level(struct Game *G, Clay_Sizing *claySize){
+
+}
+
+
 void ui_options_menu(struct Game *G, Clay_Sizing *claySize){
   MenuItem *menuItems[] = {
     &(MenuItem){.caption = "AUDIO", .id = "AudioButton"},
@@ -162,7 +175,7 @@ void ui_main_menu(struct Game *G, Clay_Sizing *claySize){
     offset = sin(SDL_GetTicks() / speed) * amplitude;
 
     CLAY(CLAY_ID("MenuFireSkeleton"), {    
-    .floating = {.offset={.x=-100, .y=150 + offset}, .attachTo=CLAY_ATTACH_TO_ROOT, .zIndex = 99, .attachPoints = { .element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP }},
+    .floating = {.offset={.x=-100, .y=150 + offset}, .attachTo=CLAY_ATTACH_TO_PARENT, .zIndex = 99, .attachPoints = { .element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP }},
     .layout = {.sizing = {.width = CLAY_SIZING_FIXED(450)}},
     .aspectRatio = {450./644.},
     .image = G->images[0] }){};
@@ -171,20 +184,26 @@ void ui_main_menu(struct Game *G, Clay_Sizing *claySize){
 }
 
 void ui_fps(float frameRate) {
-  char str[3];
-  int value;
+  char fpsStr[3];
+  int fps;
 
-  if (frameRate > 1000){
-    value = 999;
+  if (frameRate > 999){
+    fps = 999;
   }else{
-    value = roundf(frameRate);
+    fps = roundf(frameRate);
   }
 
-  sprintf(str, "%d", value);
+  snprintf(fpsStr, sizeof(fpsStr), "%d", fps);
+  
   CLAY(CLAY_ID("FPS"),{
-      .floating = {.attachTo=CLAY_ATTACH_TO_ROOT, .zIndex = 999, .attachPoints = { .element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP }}
+      .floating = {
+        .offset={.x=-10, .y=5},
+        .attachTo=CLAY_ATTACH_TO_ROOT,
+        .zIndex = 999,
+        .attachPoints = { .element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP }
+      }
     }){
-    CLAY_TEXT(ToClayString("60"), CLAY_TEXT_CONFIG({
+    CLAY_TEXT(ToClayString(fpsStr), CLAY_TEXT_CONFIG({
       .fontSize = 24,
       .textColor = {255, 255, 255, 255},
       .fontId = 0
@@ -195,5 +214,5 @@ void ui_fps(float frameRate) {
 
 
 Clay_String ToClayString (char* string){
-  return (Clay_String){true, strlen(string), string};
+  return (Clay_String){false, strlen(string), string};
 };

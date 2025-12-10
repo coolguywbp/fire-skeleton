@@ -2,6 +2,10 @@
 #define GAME_H
 
 #include "main.h"
+#include "core.h"
+#include "ecs_renderer.h"
+
+#include "utils.h"
 
 typedef struct {
   SDL_Renderer *renderer;
@@ -31,6 +35,9 @@ struct Game {
   
   GameState *state;
   struct UI *ui;
+  
+  ECS *ecs;
+  ECS_RenderCommandArray *ecsRenderCommands;
 
   SDL_Texture **images;
   
@@ -51,7 +58,7 @@ typedef enum {
   SCENE_NONE = 0,
   SCENE_MAIN_MENU,
   SCENE_MAIN_MENU_OPTIONS,
-  SCENE_LEVEL_1,
+  SCENE_LEVEL,
   SCENE_SHOP,
   SCENE_MAX
 } Scenes;

@@ -1,9 +1,15 @@
 #include "game.h"
+
 #include "clay_renderer.h"
+#include "components.h"
 #include "init_clay.h"
 #include "init_sdl.h"
+#include "init_ecs.h"
+
 #include "load_m.h"
+
 #include "ui.h"
+
 #include "main.h"
 
 void game_render_color(struct Game *G);
@@ -33,6 +39,9 @@ bool game_new(struct Game **game) {
   if (!ui_init_clay(G)) {
     return false;
   }
+  if (!init_ecs(G)) {
+    return false;
+  }
   
   G->mouse = malloc(sizeof(Mouse));
   G->mouse->debounceDelay = 50;
@@ -49,6 +58,17 @@ bool game_new(struct Game **game) {
 
   srand((unsigned)time(NULL));
 
+	Entity entity;
+  TransformComponent *comp;
+  for (int i = 0; i < 1; i++) {
+    entity = ECS_EntityNew(G->ecs, NULL);
+    comp = ECS_EntityAddComponent(G->ecs, entity, COMPONENT_ID(TransformComponent));
+    assert(comp);
+    comp = ECS_EntityAddComponent(G->ecs, entity, COMPONENT_ID(VelocityComponent));
+    assert(comp);
+  }
+
+
   return true;
 }
 
@@ -64,9 +84,16 @@ void game_free(struct Game **game) {
       SDL_DestroyWindow(G->window);
       G->window = NULL;
     }
-
+    
     TTF_Quit();
     SDL_Quit();
+  
+    if (G->ecs){
+      ECS_Delete(G->ecs);
+      G->ecs = NULL;
+    }
+
+	  //free(test_sys);
 
     free(G);
 
@@ -107,7 +134,7 @@ void game_events(struct Game *G) {
       }
       break;
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
-      //DEBOUNING CLICKS ??? SURE???
+      //DEBOUNING CLICKS ???
       uint64_t currentTime = SDL_GetTicks();
       uint64_t clickDelta = currentTime - G->mouse->lastClick;
       double difference = clickDelta - G->mouse->debounceDelay;
@@ -137,23 +164,19 @@ void game_events(struct Game *G) {
       }
       break;
     case SDL_EVENT_MOUSE_WHEEL:
-      printf("Mouse wheel: x=%.2f, y=%.2f\n",
-              G->event.wheel.x,
-              G->event.wheel.y);
-      
       Clay_UpdateScrollContainers(true, (Clay_Vector2) { G->event.wheel.x, G->event.wheel.x },G->dtime);
       break;
     case SDL_EVENT_WINDOW_MOUSE_ENTER:
-      printf("Mouse entered window\n");
+      // printf("Mouse entered window\n");
       // Reset previous position to current position
-      G->mouse->x = G->mouse->prevx;
-      G->mouse->y = G->mouse->prevy;
+      // G->mouse->x = G->mouse->prevx;
+      // G->mouse->y = G->mouse->prevy;
       G->mouse->prevx = -1;
       G->mouse->prevy = -1;
       break;
 
     case SDL_EVENT_WINDOW_MOUSE_LEAVE:
-      printf("Mouse left window\n");
+      // printf("Mouse left window\n");
       // Optionally handle mouse leaving the window
       break;
     default:
@@ -167,11 +190,13 @@ void mouse_click_events(struct Game *G){
 }
 
 void game_update(struct Game *G) {
+  ECS_Update(G->ecs);
   ui_update(G);
 }
 
 void game_render(const struct Game *G) {
   SDL_RenderClear(G->renderer);
+  SDL_ECS_RenderCommands(G->renderer, G->ecsRenderCommands);
   SDL_Clay_RenderClayCommands(G->clayRendererData, &G->ui->renderCommands);
   SDL_RenderPresent(G->renderer);
 }

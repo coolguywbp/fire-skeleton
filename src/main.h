@@ -1,3 +1,4 @@
+#pragma once
 #ifndef MAIN_H
 #define MAIN_H
 #define _POSIX_C_SOURCE 200112L // needed to get setenv() working
