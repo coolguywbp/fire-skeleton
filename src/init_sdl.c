@@ -1,16 +1,10 @@
 #include "init_sdl.h"
 #include "load_f.h"
+#include "logger.h"
 #include <stdlib.h>
 
 bool game_init_sdl(struct Game *G) {
-  // On Linux force X11 for more predictable behavior
-  #ifdef __linux__
-  setenv("SDL_VIDEODRIVER", "x11", 1);
-  // Disable any desktop environment scaling
-  setenv("GDK_SCALE", "1", 1);
-  setenv("QT_AUTO_SCREEN_SCALE_FACTOR", "0", 1);
-  #endif
-
+  
   if (!SDL_Init(SDL_FLAGS)) {
     fprintf(stderr, "Error initializing SDL3: %s\n", SDL_GetError());
     return false;
@@ -37,7 +31,7 @@ bool game_init_sdl(struct Game *G) {
 
   
   SDL_DisplayID primary_display = SDL_GetPrimaryDisplay();
-  printf("Primary display ID: %u\n", primary_display);
+  LOG_INFO("Primary display ID: %u", primary_display);
   
   float render_scale_x, render_scale_y,monitor_scale, display_scale, pixel_density;
   monitor_scale = SDL_GetDisplayContentScale(primary_display);
@@ -45,8 +39,8 @@ bool game_init_sdl(struct Game *G) {
   pixel_density = SDL_GetWindowPixelDensity(G->window);
   SDL_GetRenderScale(G->renderer, &render_scale_x, &render_scale_y);
   
-  printf("Monitor scale: %.2f\nDisplay scale: %.2f\nPixel density: %.2f\n", monitor_scale, display_scale, pixel_density);
-  printf("Render scale: %.2fx, %.2fy\n", render_scale_x, render_scale_y);
+  LOG_INFO("Monitor scale: %.2f | Display scale: %.2f | Pixel density: %.2f", monitor_scale, display_scale, pixel_density);
+  LOG_INFO("Render scale: %.2fx, %.2fy", render_scale_x, render_scale_y);
   
   int window_width, window_height;
   int render_width, render_height;
@@ -56,13 +50,13 @@ bool game_init_sdl(struct Game *G) {
   SDL_GetRenderOutputSize(G->renderer, &render_width, &render_height);
   SDL_GetWindowSizeInPixels(G->window, &pixel_width, &pixel_height);
 
-  printf("Window logical size: %dx%d\n", window_width, window_height);
-  printf ("Window size in pixels: %dx%d\n", pixel_width, pixel_height);
-  printf("Renderer output size: %dx%d\n", render_width, render_height);
+  LOG_INFO("Window logical size: %dx%d", window_width, window_height);
+  LOG_INFO("Window size in pixels: %dx%d", pixel_width, pixel_height);
+  LOG_INFO("Renderer output size: %dx%d", render_width, render_height);
 
   G->textEngine = TTF_CreateRendererTextEngine(G->renderer);
   if (!G->textEngine) {
-    fprintf(stderr, "Error creating TextEngine: %s\n", SDL_GetError());
+    fprintf(stderr, "Error creating TextEngine: %s", SDL_GetError());
     return false;
   }
   G->clayRendererData = malloc(sizeof(Clay_SDL3RendererData));
@@ -70,7 +64,7 @@ bool game_init_sdl(struct Game *G) {
   G->clayRendererData->textEngine = G->textEngine;
   G->clayRendererData->fonts = load_fonts(G);
   if (!G->clayRendererData) {
-    fprintf(stderr, "Error creating ClayRendererData: %s\n", SDL_GetError());
+    fprintf(stderr, "Error creating ClayRendererData: %s", SDL_GetError());
     return false;
   }
 

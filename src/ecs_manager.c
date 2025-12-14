@@ -1,4 +1,4 @@
-#include "manager.h"
+#include "ecs_manager.h"
 
 int string_arr_to_type(hash_t **dst, const char **src)
 {

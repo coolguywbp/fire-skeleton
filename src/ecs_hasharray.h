@@ -3,7 +3,7 @@
 #ifndef ECS_HASH_ARRAY_H
 #define ECS_HASH_ARRAY_H
 
-#include "hash.h"
+#include "ecs_hash.h"
 
 /*
     The hash array is a dynamic array backed by the same implementation as a

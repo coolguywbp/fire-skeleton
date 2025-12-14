@@ -1,5 +1,5 @@
 #include "ecs.h"
-#include "manager.h"
+#include "ecs_manager.h"
 #include "profile.h"
 
 ECS* ECS_New()

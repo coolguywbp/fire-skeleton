@@ -1,8 +1,6 @@
 #pragma once
 #ifndef MAIN_H
 #define MAIN_H
-#define _POSIX_C_SOURCE 200112L // needed to get setenv() working
-
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <SDL3_image/SDL_image.h>
@@ -13,6 +11,7 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include "logger.h"
 #include "clay.h"
 
 #define SDL_FLAGS SDL_INIT_VIDEO

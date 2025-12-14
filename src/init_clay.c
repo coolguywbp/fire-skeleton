@@ -44,14 +44,12 @@ bool ui_init_clay(struct Game *G) {
   Clay_Dimensions dimensions = (Clay_Dimensions){WINDOW_WIDTH, WINDOW_HEIGHT};
   ui->clayDimensions = dimensions;
 
-  printf("Initializing Clay...");
   if (!Clay_Initialize(clayMemory, dimensions,
                        (Clay_ErrorHandler){HandleClayErrors})) {
     fprintf(stderr, "Error initializing Clay UI: %s\n", SDL_GetError());
     return false;
   };
   Clay_SetMeasureTextFunction(SDL_MeasureText, G->clayRendererData->fonts);
-  printf("OK\n");
 
   G->ui = ui;
 

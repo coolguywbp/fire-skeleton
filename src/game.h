@@ -1,11 +1,15 @@
+#pragma once
+#include <stdint.h>
 #ifndef GAME_H
 #define GAME_H
 
 #include "main.h"
-#include "core.h"
-#include "ecs_renderer.h"
+#include "ecs_core.h"
+#include "renderer.h"
 
 #include "utils.h"
+
+typedef uint32_t ComponentMask;
 
 typedef struct {
   SDL_Renderer *renderer;
@@ -37,8 +41,9 @@ struct Game {
   struct UI *ui;
   
   ECS *ecs;
-  ECS_RenderCommandArray *ecsRenderCommands;
-
+  RenderCommandArray *renderCommands;
+  
+  EntityArchetype **archetypes;
   SDL_Texture **images;
   
   bool debug;

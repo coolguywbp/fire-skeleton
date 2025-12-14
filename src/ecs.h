@@ -8,12 +8,12 @@
 #ifndef ECS_MAIN_H
 #define ECS_MAIN_H
 
-#include "core.h"
+#include "ecs_core.h"
 
-#include "event.h"
-#include "component.h"
-#include "entity.h"
-#include "system.h"
+#include "ecs_event.h"
+#include "ecs_component.h"
+#include "ecs_entity.h"
+#include "ecs_system.h"
 
 #include "utils.h"
 /*

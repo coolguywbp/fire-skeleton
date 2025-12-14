@@ -1,6 +1,6 @@
 // command_buffer.c
 
-#include "manager.h"
+#include "ecs_manager.h"
 
 CommandBuffer* CommandBuffer_New(ECS *ecs)
 {

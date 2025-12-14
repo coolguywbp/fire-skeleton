@@ -1,5 +1,5 @@
-#include "component.h"
-#include "manager.h"
+#include "ecs_component.h"
+#include "ecs_manager.h"
 
 const char* ECS_ComponentToString(ECS *ecs, ComponentID comp)
 {

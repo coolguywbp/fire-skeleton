@@ -7,10 +7,14 @@
 #include "init_ecs.h"
 
 #include "load_m.h"
+#include "archetypes.h"
 
+#include "logger.h"
 #include "ui.h"
 
 #include "main.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 void game_render_color(struct Game *G);
 void game_toggle_music(void);
@@ -28,19 +32,38 @@ bool game_new(struct Game **game) {
     fprintf(stderr, "Error Calloc of New Game.\n");
     return false;
   }
-  struct Game *G = *game;
+  
+  LOG_DEBUG("Starting Game initialization");
 
+  struct Game *G = *game;
+  
+  LOG_DEBUG("(Init 0/5) Started SDL init ");
   if (!game_init_sdl(G)) {
     return false;
+  }else{
+    LOG_DEBUG("(Init 1/5) SDL OK");
   }
+
+  LOG_DEBUG("(Init 1/5) Started media loading");
   if (!game_load_media(G)) {
     return false;
+  }else{
+    LOG_DEBUG("(Init 2/5) Media OK");
   }
+
+  LOG_DEBUG("(Init 2/5) Started Clay init");
   if (!ui_init_clay(G)) {
     return false;
+  }else{
+    LOG_DEBUG("(Init 3/5) Clay OK");
   }
+
+  LOG_DEBUG("(Init 3/5) Started ECS init");
   if (!init_ecs(G)) {
+    LOG_FATAL("ECS init failed");
     return false;
+  } else{
+    LOG_DEBUG("(Init 4/5) ECS OK");
   }
   
   G->mouse = malloc(sizeof(Mouse));
@@ -49,6 +72,7 @@ bool game_new(struct Game **game) {
   
   G->state = malloc(sizeof(GameState));
   G->state->sceneId = SCENE_MAIN_MENU;
+  
 
   G->is_running = true;
   G->debug = false;
@@ -58,17 +82,10 @@ bool game_new(struct Game **game) {
 
   srand((unsigned)time(NULL));
 
-	Entity entity;
+
+  Entity entity;
   TransformComponent *comp;
-  for (int i = 0; i < 1; i++) {
-    entity = ECS_EntityNew(G->ecs, NULL);
-    comp = ECS_EntityAddComponent(G->ecs, entity, COMPONENT_ID(TransformComponent));
-    assert(comp);
-    comp = ECS_EntityAddComponent(G->ecs, entity, COMPONENT_ID(VelocityComponent));
-    assert(comp);
-  }
-
-
+  entity = ECS_EntityNew(G->ecs, G->archetypes[TEST_BOUNCING_SPRITE_ARCHETYPE]);
   return true;
 }
 
@@ -104,25 +121,24 @@ void game_free(struct Game **game) {
   }
 }
 
-void game_render_color(struct Game *G) {
-  SDL_SetRenderDrawColor(G->renderer, (Uint8)rand(), (Uint8)rand(),
-                         (Uint8)rand(), 255);
-}
-
 void game_events(struct Game *G) {
   while (SDL_PollEvent(&G->event)) {
+
+    uint64_t currentTime = SDL_GetTicks();
+    uint64_t clickDelta;
+
     switch (G->event.type) {
     case SDL_EVENT_QUIT:
       G->is_running = false;
       break;
     case SDL_EVENT_KEY_DOWN:
       switch (G->event.key.scancode) {
+      case SDL_SCANCODE_Q:
       case SDL_SCANCODE_ESCAPE:
         G->state->sceneId = SCENE_MAIN_MENU;
         //G->is_running = false;
         break;
       case SDL_SCANCODE_SPACE:
-        //game_render_color(G);
         break;
       case SDL_SCANCODE_M:
         // game_toggle_music();
@@ -135,8 +151,7 @@ void game_events(struct Game *G) {
       break;
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
       //DEBOUNING CLICKS ???
-      uint64_t currentTime = SDL_GetTicks();
-      uint64_t clickDelta = currentTime - G->mouse->lastClick;
+      clickDelta = currentTime - G->mouse->lastClick;
       double difference = clickDelta - G->mouse->debounceDelay;
       // printf("Delta: %f\n", (double)clickDelta);
       // printf("Debounce delay: %f\n", (double)G->mouse->debounceDelay);
@@ -190,13 +205,23 @@ void mouse_click_events(struct Game *G){
 }
 
 void game_update(struct Game *G) {
-  ECS_Update(G->ecs);
+  switch(G->state->sceneId){
+    case SCENE_MAIN_MENU:
+    case SCENE_MAIN_MENU_OPTIONS:
+    break;
+
+    case SCENE_LEVEL:
+    ECS_Update(G->ecs);
+    break;
+    default:
+    break;
+  }
   ui_update(G);
 }
 
 void game_render(const struct Game *G) {
   SDL_RenderClear(G->renderer);
-  SDL_ECS_RenderCommands(G->renderer, G->ecsRenderCommands);
+  //SDL_RenderCommands(G->renderer, G->renderCommands);
   SDL_Clay_RenderClayCommands(G->clayRendererData, &G->ui->renderCommands);
   SDL_RenderPresent(G->renderer);
 }

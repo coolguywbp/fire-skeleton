@@ -1,6 +1,6 @@
 // A multithreaded update implementation.
 
-#include "manager.h"
+#include "ecs_manager.h"
 #include "profile.h"
 
 #define THREAD_WAIT(data) pthread_cond_wait(&data->update_cond, &data->update_mutex)

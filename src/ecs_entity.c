@@ -1,5 +1,5 @@
-#include "entity.h"
-#include "manager.h"
+#include "ecs_entity.h"
+#include "ecs_manager.h"
 
 Entity ECS_EntityNew(ECS *ecs, EntityArchetype *archetype)
 {

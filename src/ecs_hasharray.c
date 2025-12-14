@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "hasharray.h"
-#include "mempool.h"
+#include "ecs_hasharray.h"
+#include "ecs_mempool.h"
 
 struct hasharray_t {
     size_t count;

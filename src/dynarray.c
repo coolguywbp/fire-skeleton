@@ -1,7 +1,7 @@
 #include "dynarray.h"
-#include "macros.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 
 static inline int clamp(int val, int min, int max)
@@ -35,7 +35,12 @@ void* dyn_insert(dynarray_t *arr, int idx, void *data)
 	assert(arr && arr->ptr);
 
 	const size_t r_idx = GET_RIDX(arr->size, idx);
-	ERR_RET_NULL(dyn_resize(arr, (r_idx < arr->size ? arr->size : r_idx) + 1), "Error resizing dynamic array.");
+
+	// ERR_RET_NULL(dyn_resize(arr, (r_idx < arr->size ? arr->size : r_idx) + 1), "Error resizing dynamic array.");
+  if(!dyn_resize(arr, (r_idx < arr->size ? arr->size : r_idx) + 1)){
+    fprintf(stderr, "Error resizing dynamic array.");
+    return NULL;
+  }
 
 	void *ptr = arr->ptr + arr->entry_size * r_idx;
 
@@ -59,7 +64,11 @@ void* dyn_append(dynarray_t *arr, void *data)
 {
 	assert(arr && arr->ptr);
 
-	ERR_RET_NULL(dyn_resize(arr, arr->size + 1), "Error resizing dynamic array.");
+	// ERR_RET_NULL(dyn_resize(arr, arr->size + 1), "Error resizing dynamic array.");
+  if(!dyn_resize(arr, arr->size + 1)){
+    fprintf(stderr, "Error resizing dynamic array.");
+    return NULL;
+  }
 
 	void *ptr = arr->ptr + arr->entry_size * arr->size++;
 	if (data == NULL) memset(ptr, 0, arr->entry_size);

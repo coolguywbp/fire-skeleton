@@ -14,8 +14,8 @@
 #include <pthread.h>
 
 #include "ecs.h"
-#include "command_buffer.h"
-#include "macros.h"
+#include "ecs_command_buffer.h"
+#include "ecs_macros.h"
 
 typedef struct SystemCollection SystemCollection;
 typedef struct ComponentType ComponentType;

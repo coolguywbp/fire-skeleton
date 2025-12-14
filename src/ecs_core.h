@@ -8,10 +8,10 @@
 #include <stdint.h>
 #include <pthread.h>
 
-#include "hash.h"
-#include "hashtable.h"
-#include "hasharray.h"
-#include "hashset.h"
+#include "ecs_hash.h"
+#include "ecs_hashtable.h"
+#include "ecs_hasharray.h"
+#include "ecs_hashset.h"
 #include "dynarray.h"
 
 /*

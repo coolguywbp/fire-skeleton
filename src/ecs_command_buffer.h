@@ -1,6 +1,6 @@
 // command_buffer.h
 
-#include "core.h"
+#include "ecs_core.h"
 
 typedef enum {
     CMD_EntityCreate,

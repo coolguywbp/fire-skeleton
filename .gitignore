@@ -4,6 +4,7 @@ obj/
 game
 Graphics.af*
 
+*.env
 *.sh
 *.txt
 *.c1

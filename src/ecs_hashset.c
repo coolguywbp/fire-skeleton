@@ -1,8 +1,8 @@
 // hashset.c - A hash-based set implementation.
 
-#include "hashset.h"
-#include "mempool.h"
-#include "macros.h"
+#include "ecs_hashset.h"
+#include "ecs_mempool.h"
+#include "ecs_macros.h"
 
 #include <stdlib.h>
 

@@ -1,7 +1,7 @@
-#include "hashtable.h"
+#include "ecs_hashtable.h"
 #include "zlib.h"
-#include "mempool.h"
-#include "manager.h"
+#include "ecs_mempool.h"
+#include "ecs_manager.h"
 
 #include <math.h>
 

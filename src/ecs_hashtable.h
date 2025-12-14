@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "hash.h"
+#include "ecs_hash.h"
 
 /*
     A hashtable implementation.

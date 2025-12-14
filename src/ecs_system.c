@@ -1,5 +1,6 @@
-#include "system.h"
-#include "manager.h"
+#include "ecs_system.h"
+#include "ecs_manager.h"
+#include "logger.h"
 
 bool ECS_SystemRegister(ECS *ecs, const SystemRegistryInfo *reg, void *data)
 {
@@ -7,7 +8,12 @@ bool ECS_SystemRegister(ECS *ecs, const SystemRegistryInfo *reg, void *data)
 
     const char *name = reg->name;
     const SystemUpdateInfo *update_info = reg->update_info;
-
+    LOG_DEBUG("Registering system: %s", name);
+    LOG_DEBUG("%s update_info: IsThreadSafe: %b | UpdatesOtherEntities: %b | CreatesOrDeletesEntities: %b | AfterSystems: %s ", name,
+              update_info->IsThreadSafe,
+              update_info->UpdatesOtherEntities,
+              update_info->CreatesOrDeletesEntities,
+              update_info->AfterSystems);
     System info;
     info.name = malloc(strlen(name) + 1);
     info.name_hash = hash_string(name);
@@ -17,7 +23,6 @@ bool ECS_SystemRegister(ECS *ecs, const SystemRegistryInfo *reg, void *data)
     strcpy((char *)info.name, name);
 
     info.udata = data;
-
     info.up_func = reg->update;
     info.ev_func = reg->event;
 
@@ -26,6 +31,8 @@ bool ECS_SystemRegister(ECS *ecs, const SystemRegistryInfo *reg, void *data)
     info.is_thread_safe = update_info->IsThreadSafe
         && !update_info->UpdatesOtherEntities
         && !update_info->CreatesOrDeletesEntities;
+    
+    LOG_DEBUG("%s: update_info->AfterSystems = %s", update_info->AfterSystems);
 
     // If we have dependencies, create a hash set to store them in.
     if (update_info->AfterSystems) {

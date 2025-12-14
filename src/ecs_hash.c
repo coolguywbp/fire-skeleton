@@ -1,4 +1,4 @@
-#include "hash.h"
+#include "ecs_hash.h"
 #include "zlib.h"
 
 #include <string.h>

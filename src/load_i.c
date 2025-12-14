@@ -1,4 +1,5 @@
 #include "load_i.h"
+#include "logger.h"
 
 SDL_Texture **load_images(SDL_Renderer *renderer) {
   char *imageDirPath = "assets/images/";
@@ -17,7 +18,7 @@ SDL_Texture **load_images(SDL_Renderer *renderer) {
         IMG_LoadTexture(renderer, full_path);
     if (image) {
       // Do something with the loaded texture, e.g., store it in a list
-      printf("Loaded image: %s (%d)\n", image_names[i], i+1);
+      LOG_DEBUG("Loaded image: %s (%d/%d)", image_names[i], i+1, length);
 
       textures[i] = image;
       // Remember to free the texture later with

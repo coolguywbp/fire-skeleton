@@ -3,7 +3,7 @@
 #ifndef ECS_HASHSET_H
 #define ECS_HASHSET_H
 
-#include "hash.h"
+#include "ecs_hash.h"
 #include <stdbool.h>
 
 /*

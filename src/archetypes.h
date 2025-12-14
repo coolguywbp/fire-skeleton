@@ -1,8 +1,9 @@
-#ifndef ARCHETYPES_H
-#define ARCHETYPES_H
+#include "game.h"
 
-#include "init_ecs.h"
+typedef enum{
+  TEST_BOUNCING_SPRITE_ARCHETYPE = 0,
+  PLAYER_ARCHETYPE,
+  MAX_ARCHETYPES
+} Archetypes;
 
-bool ecs_archetypes_register(struct Game *G);
-
-#endif // !ARCHETYPES_H
+bool load_archetypes(struct Game *G);
