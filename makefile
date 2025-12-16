@@ -15,7 +15,7 @@ CFLAGS_STRICT	= -Wstrict-aliasing=2 -Wall -Wextra -Werror -Wpedantic \
 
 CFLAGS_RELEASE	= -O3 -march=native -flto=auto -fno-plt -fomit-frame-pointer
 
-CFLAGS_DEBUG	= -O0 -g3 -ggdb3 -fno-strict-aliasing -fstack-protector-strong \
+CFLAGS_DEBUG	= -O0 -g -ggdb3 -fno-strict-aliasing -fstack-protector-strong \
 				  -DDEBUG -fno-omit-frame-pointer
 
 LDLIBS_BASE		= -lm
@@ -50,6 +50,10 @@ $(BUILD_DIR):
 	$(MKDIR)
 
 all:	$(TARGET)
+
+debug: CFLAGS += $(CFLAGS_DEBUG) #$(CFLAGS_STRICT)
+debug: LDLIBS += $(LDLIBS_DEBUG)
+debug: $(TARGET)
 
 $(BUILD_DIR)/%.o : $(SRC_DIR)/%.c | $(BUILD_DIR)
 	@echo "------ Make $(@) ------"

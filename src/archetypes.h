@@ -1,3 +1,5 @@
+#ifndef ARCHETYPES_H
+#define ARCHETYPES_H
 #include "game.h"
 
 typedef enum{
@@ -7,3 +9,4 @@ typedef enum{
 } Archetypes;
 
 bool load_archetypes(struct Game *G);
+#endif

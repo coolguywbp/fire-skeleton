@@ -13,9 +13,6 @@ bool SpriteRenderSystem_event(Event *event, SpriteRenderSystem *system)
 	return false;
 }
 
-const char *SpriteRenderSystem_afterSystems[] = {"VelocitySystem"};
-const SystemUpdateInfo SpriteRenderSystem_update_info = {
-	true, false, false, SpriteRenderSystem_afterSystems};
 
 
 SYSTEM_IMPL(VelocitySystem)
@@ -64,21 +61,15 @@ bool VelocitySystem_event(Event *event, VelocitySystem *system)
 	return false;
 }
 
-const char *VelocitySystem_afterSystems = NULL;
+static const char *SpriteRenderSystem_afterSystems[] = {"VelocitySystem", NULL};
+const SystemUpdateInfo SpriteRenderSystem_update_info = {
+	true, false, false, SpriteRenderSystem_afterSystems};
+
+static const char *VelocitySystem_afterSystems[] = {NULL};
 const SystemUpdateInfo VelocitySystem_update_info = {
-	true, false, false, NULL};
+	true, true, false, VelocitySystem_afterSystems};
 
 bool ecs_systems_register(struct Game *G){
-  //////////////////////////////////
-  //
-  //    SPRITE RENDER SYSTEM
-  //
-  const char *SpriteRenderSystem_components[] = {
-	 "TransformComponent", "SpriteComponent", NULL};
-	SpriteRenderSystem_reg.archetype = ECS_EntityRegisterArchetype(G->ecs, "SpriteRenderSystemArchetype", SpriteRenderSystem_components);
-	SpriteRenderSystem *spriteRender_sys = malloc(sizeof(SpriteRenderSystem));
-	assert(REGISTER_SYSTEM(G->ecs, SpriteRenderSystem, spriteRender_sys));
-  LOG_DEBUG("ECS SpriteRenderSystem OK");
   //////////////////////////////////
   //
   //    VELOCITY SYSTEM
@@ -90,7 +81,16 @@ bool ecs_systems_register(struct Game *G){
 	assert(REGISTER_SYSTEM(G->ecs, VelocitySystem, velocity_sys));
   LOG_DEBUG("ECS VelocitySystem OK");
   //////////////////////////////////
-
+  //
+  //    SPRITE RENDER SYSTEM
+  //
+  const char *SpriteRenderSystem_components[] = {
+	 "TransformComponent", "SpriteComponent", NULL};
+	SpriteRenderSystem_reg.archetype = ECS_EntityRegisterArchetype(G->ecs, "SpriteRenderSystemArchetype", SpriteRenderSystem_components);
+	SpriteRenderSystem *spriteRender_sys = malloc(sizeof(SpriteRenderSystem));
+	assert(REGISTER_SYSTEM(G->ecs, SpriteRenderSystem, spriteRender_sys));
+  LOG_DEBUG("ECS SpriteRenderSystem OK");
+  //////////////////////////////////
 
   return true;
 }

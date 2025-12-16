@@ -3,6 +3,7 @@
 #include "ecs_hashset.h"
 #include "ecs_mempool.h"
 #include "ecs_macros.h"
+#include "logger.h"
 
 #include <stdlib.h>
 
@@ -33,7 +34,7 @@ hashset_t* hs_alloc(size_t initial_size)
     return hs;
 }
 
-void hs_delete(hashset_t *hs)
+void hs_free(hashset_t *hs)
 {
     mp_destroy(hs->storage);
     free(hs->buckets);
@@ -44,49 +45,52 @@ void hs_resize(hashset_t *hs)
 {
     size_t oldsize = hs->size;
     size_t newsize = hs->size * 2;
-    void *ptr = realloc(hs->buckets, sizeof(bucket_t *) * newsize);
-    ERR_RET(ptr, "Error allocating memory for hashset.\n");
 
-    hs->size = newsize;
-    hs->buckets = ptr;
+    // Allocate new buckets array
+    bucket_t **new_buckets = calloc(newsize, sizeof(bucket_t *));
 
+    // Rehash all existing elements
     for (size_t idx = 0; idx < oldsize; idx++) {
         bucket_t *bk = hs->buckets[idx];
-        bucket_t **last = &hs->buckets[idx];
 
-        if (!bk) continue;
-
-        while(bk) {
-            size_t n_idx = GET_IDX(hs, bk->hash);
-            if (n_idx == idx) continue;
-
-            // Shuffle around all of our pointers to insert the bucket in the
-            // list at the new position.
+        while (bk) {
             bucket_t *next = bk->next;
-            bucket_t *bk2 = hs->buckets[n_idx];
-            hs->buckets[n_idx] = bk;
-            bk->next = bk2;
+            // Calculate index using the NEW size
+            size_t n_idx = bk->hash % newsize;
+
+            // Insert at head of new bucket chain
+            bk->next = new_buckets[n_idx];
+            new_buckets[n_idx] = bk;
 
             bk = next;
-            (*last)->next = bk;
         }
     }
+
+    // Free old buckets array and replace with new one
+    free(hs->buckets);
+    hs->buckets = new_buckets;
+    hs->size = newsize;
 }
+
 
 void hs_set(hashset_t *hs, hash_t hash)
 {
-    bucket_t *bk = GET_BUCKET(hs, hash);
+    if (hs->count > (float)hs->size * 0.7) hs_resize(hs);
+
+    size_t idx = GET_IDX(hs, hash);
+    bucket_t *bk = hs->buckets[idx];
+    bucket_t **prev = &hs->buckets[idx];
+
     while (bk) {
         if (bk->hash == hash) return;
-        if (!bk->next) break;
+        prev = &bk->next;
         bk = bk->next;
     }
 
-    if (hs->count > (float)hs->size * 0.7) hs_resize(hs);
-
     bucket_t *next = mp_alloc(hs->storage);
     next->hash = hash;
-    bk->next = next;
+    next->next = NULL;
+    *prev = next;
     hs->count++;
 }
 

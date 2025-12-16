@@ -79,12 +79,12 @@ struct EntityArchetype {
 };
 
 struct System {
-    const char *name;
-    hash_t name_hash;
+  const char *name;
+  hash_t name_hash;
 	void *udata;
 
-    system_update_func up_func;
-    system_event_func ev_func;
+  system_update_func up_func;
+  system_event_func ev_func;
 
 	bool is_thread_safe;
 
