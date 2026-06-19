@@ -1,11 +1,17 @@
 <h1 align="center">Fire Skeleton Invader</h1>
 
 <p align="center">
-  <img src="assets/images/MenuFireSkeleton.png" alt="Fire Skeleton" width="220">
+  <img src="assets/images/MenuFireSkeleton.png" alt="Fire Skeleton" width="170">
 </p>
 
 <p align="center">
   <i>A hand-written game engine in pure C, built around a custom ECS — and a benchmark to prove it scales.</i>
+</p>
+
+<p align="center">
+  <img src="assets/demo.gif" alt="Benchmark: tens of thousands of sprites, each bouncing and repelled by the cursor" width="480">
+  <br>
+  <sub>The benchmark at full tilt — tens of thousands of sprites, each independently simulated and rendered, repelled by the cursor.</sub>
 </p>
 
 ---

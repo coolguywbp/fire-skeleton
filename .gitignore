@@ -6,6 +6,12 @@ web/
 vendor/
 Graphics.af*
 
+# Source recordings (the lightweight GIF in assets/ is committed instead)
+*.mp4
+*.mov
+*.mkv
+*.webm
+
 *.env
 *.sh
 *.txt
