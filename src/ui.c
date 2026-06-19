@@ -1,5 +1,7 @@
 #include "ui.h"
 #include "game.h"
+#include "ecs_entity.h"
+#include "benchmark.h"
 #include "main.h"
 #include <SDL3/SDL_oldnames.h>
 #include <SDL3/SDL_touch.h>
@@ -11,6 +13,8 @@ void ui_options_menu(struct Game *G, Clay_Sizing *claySize);
 void ui_level(struct Game *G, Clay_Sizing *claySize);
 
 void ui_fps(float frameRate);
+void ui_object_count(struct Game *G);
+void ui_benchmark(struct Game *G);
 
 
 Clay_String ToClayString(char* string);
@@ -52,6 +56,12 @@ bool ui_create_layout(struct Game *G) {
   #ifdef SHOW_FPS
   ui_fps(G->frameRate);
   #endif /* ifdef SHOW_FPS */
+
+  // Object counter and benchmark status: only shown in the level, not the menus.
+  if (G->state->sceneId == SCENE_LEVEL) {
+    ui_object_count(G);
+    ui_benchmark(G);
+  }
   
   return true;
 };
@@ -184,33 +194,84 @@ void ui_main_menu(struct Game *G, Clay_Sizing *claySize){
 }
 
 void ui_fps(float frameRate) {
-  char fpsStr[3];
-  int fps;
-
-  if (frameRate > 999){
-    fps = 999;
-  }else{
-    fps = roundf(frameRate);
-  }
-
+  // Must be static: Clay stores the pointer and only measures the text later,
+  // inside Clay_EndLayout(), after this function has returned. A stack buffer
+  // would dangle (stack-use-after-return). Size 4 fits "999\0".
+  static char fpsStr[4];
+  int fps = frameRate > 999 ? 999 : (int)roundf(frameRate);
   snprintf(fpsStr, sizeof(fpsStr), "%d", fps);
-  
-  CLAY(CLAY_ID("FPS"),{
+
+  CLAY(CLAY_ID("FPS"), {
       .floating = {
-        .offset={.x=-10, .y=5},
-        .attachTo=CLAY_ATTACH_TO_ROOT,
+        .offset = {.x = -10, .y = 5},
+        .attachTo = CLAY_ATTACH_TO_ROOT,
         .zIndex = 999,
         .attachPoints = { .element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP }
       }
-    }){
+    }) {
     CLAY_TEXT(ToClayString(fpsStr), CLAY_TEXT_CONFIG({
       .fontSize = 24,
       .textColor = {255, 255, 255, 255},
       .fontId = 0
-    })
-  );
+    }));
+  }
+}
+
+void ui_object_count(struct Game *G) {
+  // Static for the same lifetime reason as ui_fps's buffer.
+  static char objStr[24];
+  snprintf(objStr, sizeof(objStr), "Objects: %zu", ECS_EntityCount(G->ecs));
+
+  // Separate label, placed to the left of the FPS counter (top-right).
+  CLAY(CLAY_ID("ObjectCount"), {
+      .floating = {
+        .offset = {.x = -70, .y = 5},
+        .attachTo = CLAY_ATTACH_TO_ROOT,
+        .zIndex = 999,
+        .attachPoints = { .element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP }
+      }
+    }) {
+    CLAY_TEXT(ToClayString(objStr), CLAY_TEXT_CONFIG({
+      .fontSize = 24,
+      .textColor = {255, 255, 255, 255},
+      .fontId = 0
+    }));
   }
  }
+
+void ui_benchmark(struct Game *G) {
+  // Static for the same lifetime reason as ui_fps's buffer.
+  static char buf[64];
+  Benchmark *b = G->bench;
+
+  switch (b->phase) {
+    case BENCH_RAMP_UP:
+      snprintf(buf, sizeof(buf), "BENCHMARK: ramping up...");
+      break;
+    case BENCH_RAMP_DOWN:
+      snprintf(buf, sizeof(buf), "BENCHMARK: peak %zu @30fps, settling", b->peak);
+      break;
+    case BENCH_DONE:
+    default:
+      snprintf(buf, sizeof(buf), "BENCHMARK: peak %zu entities @30fps", b->peak);
+      break;
+  }
+
+  CLAY(CLAY_ID("Benchmark"), {
+      .floating = {
+        .offset = {.x = 10, .y = 5},
+        .attachTo = CLAY_ATTACH_TO_ROOT,
+        .zIndex = 999,
+        .attachPoints = { .element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP }
+      }
+    }) {
+    CLAY_TEXT(ToClayString(buf), CLAY_TEXT_CONFIG({
+      .fontSize = 24,
+      .textColor = {137, 180, 250, 255},
+      .fontId = 0
+    }));
+  }
+}
 
 
 Clay_String ToClayString (char* string){

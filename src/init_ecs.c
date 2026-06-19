@@ -29,8 +29,8 @@ bool init_ecs (struct Game *G)
     LOG_DEBUG("ECS systems OK");
   };
 
-	bool res = ECS_SetThreads(G->ecs, 1);
-	assert(res);
+	// Parallel system updates use the ECS worker pool (created in ECS_New); the
+	// older per-system thread scheduler is left unused.
 
 	return true;
 }

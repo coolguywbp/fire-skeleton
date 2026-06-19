@@ -19,6 +19,7 @@ void hs_set(hashset_t *hs, hash_t hash);
 bool hs_get(hashset_t *hs, hash_t hash);
 hash_t hs_next(hashset_t *hs, hash_t hash);
 void hs_clear(hashset_t *hs, hash_t hash);
+void hs_test(hashset_t *hs, const char** values);
 
 #define HS_FOR(hs) \
     for (hash_t idx = 0; (idx = hs_next(hs, idx));)

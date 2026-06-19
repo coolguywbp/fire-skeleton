@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include "ecs_macros.h"
 
 static inline int clamp(int val, int min, int max)
 {
@@ -35,25 +36,25 @@ void* dyn_insert(dynarray_t *arr, int idx, void *data)
 	assert(arr && arr->ptr);
 
 	const size_t r_idx = GET_RIDX(arr->size, idx);
+	const size_t old_size = arr->size;
 
-	// ERR_RET_NULL(dyn_resize(arr, (r_idx < arr->size ? arr->size : r_idx) + 1), "Error resizing dynamic array.");
-  if(!dyn_resize(arr, (r_idx < arr->size ? arr->size : r_idx) + 1)){
-    fprintf(stderr, "Error resizing dynamic array.");
-    return NULL;
-  }
+	ERR_RET_NULL(dyn_resize(arr, (r_idx < old_size ? old_size : r_idx) + 1), "Error resizing dynamic array.");
 
-	void *ptr = arr->ptr + arr->entry_size * r_idx;
+	char *ptr = (char*)arr->ptr + arr->entry_size * r_idx;
 
-	if (r_idx < arr->size) {
-		arr->size++;
-		for (size_t idx = r_idx + 1; idx < arr->size; idx++)
-			dyn_swap(arr, idx - 1, idx);
+	if (r_idx < old_size) {
+		// Shift elements to the right
+		char *src = (char*)arr->ptr + arr->entry_size * r_idx;
+		char *dst = (char*)arr->ptr + arr->entry_size * (r_idx + 1);
+		size_t bytes_to_move = (old_size - r_idx) * arr->entry_size;
+		memmove(dst, src, bytes_to_move);
+		arr->size = old_size + 1;
 	}
 
 	if (data == NULL) memset(ptr, 0, arr->entry_size);
 	else memcpy(ptr, data, arr->entry_size);
 
-	if (r_idx >= arr->size) {
+	if (r_idx >= old_size) {
 		arr->size = r_idx + 1;
 	}
 
@@ -64,13 +65,9 @@ void* dyn_append(dynarray_t *arr, void *data)
 {
 	assert(arr && arr->ptr);
 
-	// ERR_RET_NULL(dyn_resize(arr, arr->size + 1), "Error resizing dynamic array.");
-  if(!dyn_resize(arr, arr->size + 1)){
-    fprintf(stderr, "Error resizing dynamic array.");
-    return NULL;
-  }
+	ERR_RET_NULL(dyn_resize(arr, arr->size + 1), "Error resizing dynamic array.");
 
-	void *ptr = arr->ptr + arr->entry_size * arr->size++;
+	char *ptr = (char*)arr->ptr + arr->entry_size * arr->size++;
 	if (data == NULL) memset(ptr, 0, arr->entry_size);
 	else memcpy(ptr, data, arr->entry_size);
 
@@ -84,7 +81,7 @@ void* dyn_get(dynarray_t *arr, int idx)
 	const size_t r_idx = GET_RIDX(arr->size, idx);
 	if (r_idx >= arr->size) return NULL;
 
-	return arr->ptr + r_idx * arr->entry_size;
+	return (char*)arr->ptr + r_idx * arr->entry_size;
 }
 
 int dyn_find(dynarray_t *arr, void *data)
@@ -93,7 +90,7 @@ int dyn_find(dynarray_t *arr, void *data)
 
 	if (data == NULL) return -1;
 	for (size_t idx = 0; idx < arr->size; idx++) {
-		if (memcmp(arr->ptr + idx * arr->entry_size, data, arr->entry_size) == 0) {
+		if (memcmp((char*)arr->ptr + idx * arr->entry_size, data, arr->entry_size) == 0) {
 			return idx;
 		}
 	}
@@ -108,7 +105,7 @@ void dyn_delete(dynarray_t *arr, int idx)
 	const size_t r_idx = GET_RIDX(arr->size, idx);
 	if (r_idx >= arr->size) return;
 
-	void *ptr = arr->ptr + r_idx * arr->entry_size;
+	char *ptr = (char*)arr->ptr + r_idx * arr->entry_size;
 	memset(ptr, 0, arr->entry_size);
 
 	if (r_idx == arr->size - 1) --arr->size;
@@ -144,8 +141,8 @@ bool dyn_swap(dynarray_t *arr, int idx_a, int idx_b)
 	void *ptr = malloc(arr->entry_size);
 	if (!ptr) return false;
 
-	void *addr_a = arr->ptr + r_idx_a * arr->entry_size;
-	void *addr_b = arr->ptr + r_idx_b * arr->entry_size;
+	char *addr_a = (char*)arr->ptr + r_idx_a * arr->entry_size;
+	char *addr_b = (char*)arr->ptr + r_idx_b * arr->entry_size;
 
 	memmove(ptr, addr_a, arr->entry_size);
 	memmove(addr_a, addr_b, arr->entry_size);

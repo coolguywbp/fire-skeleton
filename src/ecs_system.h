@@ -70,8 +70,8 @@ typedef struct {
 bool ECS_SystemRegister(ECS *ecs, const SystemRegistryInfo *reg, void *udata);
 
 /*
-    Unregister a system from the ECS. The calling code should free the system's
-    userdata pointer if present.
+    Unregister a system from the ECS. The ECS frees the system's archetype and
+    user data (udata), so udata must be heap-allocated (or NULL).
 */
 void ECS_SystemUnregister(ECS *ecs, const char *name);
 
@@ -83,6 +83,13 @@ void ECS_SystemUnregister(ECS *ecs, const char *name);
 bool ECS_SystemQueueEvent(ECS *ecs, const char *name);
 
 /* -------------------------------------------------------------------------- */
+
+/*
+
+    Logs debug information of given registered system
+
+*/
+void ECS_SystemDebugLog(ECS *ecs, const char *name);
 
 /*
     Macros for easy creation of systems.

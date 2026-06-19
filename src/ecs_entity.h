@@ -21,6 +21,11 @@ void ECS_EntityDelete(ECS *ecs, Entity entity);
 bool ECS_EntityExists(ECS *ecs, Entity entity);
 
 /*
+	Returns the number of live entities in the ECS.
+*/
+size_t ECS_EntityCount(ECS *ecs);
+
+/*
 	Generate a string representation of an entity, suitable for display to the
 	user.
 
@@ -61,5 +66,11 @@ void ECS_EntityDeleteComponent(ECS *ecs, Entity entity, hash_t type);
 	Registers and creates an entity archetype.
 */
 EntityArchetype* ECS_EntityRegisterArchetype(ECS *ecs, const char *name, const char** components);
+
+/*
+	Frees an archetype created by ECS_EntityRegisterArchetype (its name,
+	component list, and the struct itself). Safe to call with NULL.
+*/
+void ECS_EntityFreeArchetype(EntityArchetype *archetype);
 
 #endif

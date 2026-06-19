@@ -1,4 +1,5 @@
 #include "ecs_system.h"
+#include "ecs_hashset.h"
 #include "ecs_manager.h"
 #include "logger.h"
 
@@ -8,41 +9,40 @@ bool ECS_SystemRegister(ECS *ecs, const SystemRegistryInfo *reg, void *data)
 
     const char *name = reg->name;
     const SystemUpdateInfo *update_info = reg->update_info;
-    LOG_DEBUG("Registering system: %s", name);
-    // LOG_DEBUG("%s update_info: IsThreadSafe: %b | UpdatesOtherEntities: %b | CreatesOrDeletesEntities: %b | AfterSystems: %s ", name,
-    //           update_info->IsThreadSafe,
-    //           update_info->UpdatesOtherEntities,
-    //           update_info->CreatesOrDeletesEntities,
-    //           update_info->AfterSystems);
-    System info;
-    info.name = malloc(strlen(name) + 1);
-    info.name_hash = hash_string(name);
+
+    System *info = calloc(1, sizeof(System));
+    if (!info) return false;
+
+    info->name = malloc(strlen(name) + 1);
+    info->name_hash = hash_string(name);
 
     // Copy the name string.
-    if (!info.name) return false;
-    strcpy((char *)info.name, name);
+    if (!info->name) {
+        free(info);
+        return false;
+    }
+    strcpy((char *)info->name, name);
 
-    info.udata = data;
-    info.up_func = reg->update;
-    info.ev_func = reg->event;
+    info->udata = data;
+    info->up_func = reg->update;
+    info->ev_func = reg->event;
 
-    info.archetype = reg->archetype;
+    info->archetype = reg->archetype;
 
-    info.is_thread_safe = update_info->IsThreadSafe
+    info->is_thread_safe = update_info->IsThreadSafe
         && !update_info->UpdatesOtherEntities
         && !update_info->CreatesOrDeletesEntities;
     // If we have dependencies, create a hash set to store them in.
+    info->dependencies = hs_alloc(16);
     if (update_info->AfterSystems) {
-        info.dependencies = hs_alloc(16);
-        for (size_t idx = 0; update_info->AfterSystems[idx] != NULL; idx++) {
-            hs_set(info.dependencies, hash_string(update_info->AfterSystems[idx]));
-        }
+      for (size_t idx = 0; update_info->AfterSystems[idx] != NULL; idx++) {
+          hs_set(info->dependencies, hash_string(update_info->AfterSystems[idx]));
+      }
     }
+    info->ev_queue = EventQueue_New();
+    info->ent_queue = NULL;
 
-    info.ev_queue = EventQueue_New();
-    info.ent_queue = NULL;
-
-    return Manager_RegisterSystem(ecs, &info);
+    return Manager_RegisterSystem(ecs, info);
 }
 
 System* ECS_SystemGet(ECS *ecs, const char *name)
@@ -59,3 +59,8 @@ void ECS_SystemUnregister(ECS *ecs, const char *name)
     if (!info) return;
     Manager_UnregisterSystem(ecs, info);
 }
+
+
+
+
+

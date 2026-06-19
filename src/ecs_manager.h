@@ -15,6 +15,8 @@
 
 #include "ecs.h"
 #include "ecs_command_buffer.h"
+#include "ecs_cpool.h"
+#include "ecs_tpool.h"
 #include "ecs_macros.h"
 
 typedef struct SystemCollection SystemCollection;
@@ -41,6 +43,9 @@ struct ECS {
 	size_t num_threads;
 	size_t ready_threads;
 	ThreadData **threads;
+
+	// Worker pool for data-parallel system updates (thread-safe systems).
+	tpool_t *tpool;
 
 	pthread_mutex_t global_lock;
 	pthread_cond_t ready_cond;
@@ -91,6 +96,10 @@ struct System {
 	EntityArchetype *archetype;
 	hashset_t *dependencies;
 
+	// Component types for the archetype, resolved once at registration so the
+	// per-entity update loop avoids a redundant cm_types hashtable lookup.
+	ComponentType **comp_types;
+
 	EventQueue *ev_queue;
 	hasharray_t *ent_queue;
 };
@@ -101,7 +110,7 @@ struct ComponentType {
 	component_delete_func dl_func;
 	size_t type_size;
 	hash_t type_hash;
-	hashtable_t *components;
+	cpool_t *components;
 };
 
 typedef enum {
@@ -150,6 +159,7 @@ void Manager_UpdateCollections(ECS *ecs, Entity entity);
 bool Manager_ShouldSystemQueueEntity(ECS *ecs, System *sys, Entity entity);
 void Manager_UpdateSystem(ECS *ecs, System *info, Entity entity);
 void Manager_SystemEvent(ECS *ecs, System *info, Event *event);
+void Manager_SystemDebugLog(System *info);
 
 /* -------------------------------------------------------------------------- */
 

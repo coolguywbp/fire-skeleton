@@ -46,6 +46,8 @@ endif
 CFLAGS		= $(CFLAGS_BASE)
 LDLIBS		= $(LDLIBS_BASE)
 
+.PHONY: all debug clean run rebuild web web-clean
+
 $(BUILD_DIR):
 	$(MKDIR)
 
@@ -59,7 +61,7 @@ $(BUILD_DIR)/%.o : $(SRC_DIR)/%.c | $(BUILD_DIR)
 	@echo "------ Make $(@) ------"
 	rm -f $@
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) -MMD -MP -c -o $@ $<
 
 $(TARGET): $(OBJS)
 	$(CC) $(LDLIBS) $^ -o $@
@@ -67,7 +69,50 @@ $(TARGET): $(OBJS)
 clean:
 	$(CLEAN)
 
+# Pull in auto-generated header dependencies so editing a .h rebuilds the .c
+# files that include it (prevents stale objects with mismatched struct layouts).
+-include $(DEPS)
+
 run: $(TARGET)
 	./$<
 
 rebuild: clean all
+
+# ----------------------------------------------------------------------------
+# WebAssembly build (Emscripten)  --  EXPERIMENTAL / WORK IN PROGRESS
+#
+# This target compiles and links, but the web build is NOT yet verified to run
+# correctly in a browser; more work is needed (renderer/canvas, input, asset
+# handling, benchmark assumptions). Treat it as a starting point, not done.
+#
+# Requires the Emscripten SDK (emcc) and an Emscripten-built SDL3 stack
+# (SDL3 + SDL3_image + SDL3_ttf, with their image/font dependencies). Point
+# SDL3_WASM at that install (headers in $(SDL3_WASM)/include, libs in
+# $(SDL3_WASM)/lib), e.g.:
+#
+#   make web SDL3_WASM=/path/to/sdl3-emscripten
+#
+# Output goes to web/game.{html,js,wasm,data}; serve it over HTTP and open
+# game.html. The web build is single-threaded (see ECS_CustomNew).
+# ----------------------------------------------------------------------------
+EMCC		?= emcc
+# Prebuilt Emscripten SDL3 stack, vendored in the repo by default. Override on
+# the command line (e.g. SDL3_WASM=/elsewhere) to use an install outside it.
+SDL3_WASM	?= $(CURDIR)/vendor/sdl3-wasm
+WASM_OUT	?= web/game.html
+
+# gnu11 (not strict c11) so the Emscripten/musl headers expose POSIX functions
+# like clock_gettime, matching how the code builds against glibc natively.
+WASM_CFLAGS	= -std=gnu11 -O3 -I$(SDL3_WASM)/include
+# Link order matters for static libs: SDL3_image -> libpng -> zlib (provided by
+# the Emscripten zlib port). freetype/harfbuzz are bundled inside libSDL3_ttf.a.
+WASM_LDFLAGS	= -L$(SDL3_WASM)/lib -lSDL3_image -lSDL3_ttf -lSDL3 -lpng16 \
+		  -sUSE_ZLIB=1 -sALLOW_MEMORY_GROWTH=1 \
+		  --preload-file assets
+
+web:
+	@mkdir -p $(dir $(WASM_OUT))
+	$(EMCC) $(WASM_CFLAGS) $(SRCS) $(WASM_LDFLAGS) -o $(WASM_OUT)
+
+web-clean:
+	$(RM) web/game.html web/game.js web/game.wasm web/game.data

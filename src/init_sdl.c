@@ -29,6 +29,10 @@ bool game_init_sdl(struct Game *G) {
     return false;
   }
 
+  // Disable vsync so the benchmark can measure frame rates above the monitor's
+  // refresh rate.
+  SDL_SetRenderVSync(G->renderer, 0);
+
   
   SDL_DisplayID primary_display = SDL_GetPrimaryDisplay();
   LOG_INFO("Primary display ID: %u", primary_display);

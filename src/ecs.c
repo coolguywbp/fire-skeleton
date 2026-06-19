@@ -27,6 +27,7 @@ ECS* ECS_CustomNew(const ECS_AllocInfo *alloc)
 
 	ECS *ecs = malloc(sizeof(ECS));
 	if (!ecs) return NULL;
+	ecs->tpool = NULL; // set early so ECS_Delete is safe on partial init
 
 	_ERR(ecs->entities = ha_alloc(alloc->entities, sizeof(Entity)));
 
@@ -35,8 +36,8 @@ ECS* ECS_CustomNew(const ECS_AllocInfo *alloc)
 	_ERR(dyn_alloc(&ecs->update_systems, alloc->systems, sizeof(SystemQueueItem)));
 
 	_ERR(ecs->cm_types = ht_alloc(alloc->cm_types, sizeof(ComponentType)));
-
-	ecs->alloc_info = *alloc;
+	
+  ecs->alloc_info = *alloc;
 	ecs->num_threads = 0;
 	ecs->ready_threads = 0;
 	ecs->threads = NULL;
@@ -46,6 +47,18 @@ ECS* ECS_CustomNew(const ECS_AllocInfo *alloc)
 	_ERR(pthread_cond_init(&ecs->ready_cond, NULL) == 0);
 
 	ecs->is_updating = false;
+
+	// Worker pool for parallel system updates: leave one core for the main
+	// (render) thread plus the OS.
+	size_t hw = tpool_hw_concurrency();
+	size_t workers = hw > 1 ? hw - 1 : 0;
+	if (workers > 31) workers = 31;
+#ifdef __EMSCRIPTEN__
+	// The web build runs single-threaded: browser threads need SharedArrayBuffer
+	// (COOP/COEP headers). With 0 workers the pool runs everything on the caller.
+	workers = 0;
+#endif
+	_ERR(ecs->tpool = tpool_new(workers));
 
 	#undef _ERR
 
@@ -83,6 +96,10 @@ void ECS_Delete(ECS *ecs)
 {
 	assert(ecs);
 
+	// Shut down the parallel worker pool (joins its threads).
+	tpool_free(ecs->tpool);
+	ecs->tpool = NULL;
+
 	// Clean up threads.
 	if (ecs->num_threads > 0 && ecs->threads) {
 		for (size_t idx = 0; idx < ecs->num_threads; idx++) {
@@ -117,7 +134,7 @@ void ECS_Delete(ECS *ecs)
 		HT_FOR(ecs->cm_types) {
 			ComponentType *type = ht_get(ecs->cm_types, idx);
 			if (type) {
-				ht_free(type->components);
+				cpool_free(type->components);
 				free((char *)type->type);
 				ht_delete(ecs->cm_types, idx);
 			}
@@ -255,6 +272,10 @@ void ECS_ArrangeSystems(ECS *ecs)
 {
 	bool is_thread_safe = true;
 
+	// Rebuild from scratch: drop any items from a previous arrangement so the
+	// queue is not appended to repeatedly as it is recomputed.
+	ecs->update_systems.size = 0;
+
 	#define INSERT(t) dyn_append(&ecs->update_systems, &t);
 
 	DYN_FOR(ecs->system_order, 0) {
@@ -343,6 +364,26 @@ void ECS_ResolveCommandBuffers(ECS *ecs)
 	*/
 }
 
+// Below this many entities, parallel dispatch isn't worth the sync overhead.
+#define ECS_PARALLEL_MIN 1024
+
+typedef struct {
+	ECS *ecs;
+	System *system;
+} ParUpdateCtx;
+
+// Update a slot sub-range of a system's entity queue. Safe to run concurrently
+// on disjoint ranges: each entity's components are distinct memory, component
+// lookups are read-only, and the per-call component buffer is on the stack.
+static void par_update_range(void *vctx, size_t start, size_t end)
+{
+	ParUpdateCtx *c = vctx;
+	for (size_t idx = start; idx < end; idx++) {
+		Entity *entity = ha_get(c->system->ent_queue, idx);
+		if (entity) Manager_UpdateSystem(c->ecs, c->system, *entity);
+	}
+}
+
 // Distribute an update to a thread.
 void ECS_DispatchSystemUpdate(ECS *ecs, SystemQueueItem *item)
 {
@@ -354,14 +395,23 @@ void ECS_DispatchSystemUpdate(ECS *ecs, SystemQueueItem *item)
 		distribute_to_thread(ecs, ecs->threads[thread_idx], item);
 	}
 	else {
-		Entity *entity;
 		if (item->start == item->end && item->end == 0) {
 			Manager_UpdateSystem(ecs, item->system, 0);
 			return;
 		}
 
-		HA_RANGE_FOR(item->system->ent_queue, entity, item->start, item->end) {
-			Manager_UpdateSystem(ecs, item->system, *entity);
+		// Thread-safe systems with enough entities run in parallel across the
+		// worker pool (this call blocks until the whole range is done, so system
+		// ordering is preserved). Everything else runs on the main thread.
+		if (item->system->is_thread_safe && tpool_threads(ecs->tpool) > 0 &&
+		    (item->end - item->start) >= ECS_PARALLEL_MIN) {
+			ParUpdateCtx ctx = { ecs, item->system };
+			tpool_run(ecs->tpool, par_update_range, &ctx, item->start, item->end);
+		} else {
+			Entity *entity;
+			HA_RANGE_FOR(item->system->ent_queue, entity, item->start, item->end) {
+				Manager_UpdateSystem(ecs, item->system, *entity);
+			}
 		}
 	}
 }

@@ -37,6 +37,13 @@ bool ECS_EntityExists(ECS *ecs, Entity entity)
 	return ha_get(ecs->entities, entity);
 }
 
+size_t ECS_EntityCount(ECS *ecs)
+{
+	assert(ecs);
+
+	return ha_len(ecs->entities);
+}
+
 const char* ECS_EntityToString(Entity entity)
 {
 	char *str = malloc(24);
@@ -58,7 +65,7 @@ Component* ECS_EntityAddComponent(ECS *ecs, Entity entity, hash_t type)
 	GET_TYPE(ecs, type, NULL);
 
 	// If we already have a component on the entity, return it.
-	Component *comp = ht_get(cm_type->components, entity);
+	Component *comp = cpool_get(cm_type->components, entity);
 	if (comp) return comp;
 
 	// Otherwise, create the new component.
@@ -78,7 +85,7 @@ Component* ECS_EntityGetComponent(ECS *ecs, Entity entity, hash_t type)
 	assert(ecs);
 
 	GET_TYPE(ecs, type, NULL);
-	return ht_get(cm_type->components, entity);
+	return cpool_get(cm_type->components, entity);
 }
 
 void ECS_EntityRemoveComponent(ECS *ecs, Entity entity, hash_t type)
@@ -87,7 +94,7 @@ void ECS_EntityRemoveComponent(ECS *ecs, Entity entity, hash_t type)
 
 	GET_TYPE(ecs, type,);
 
-	if (!ht_get(cm_type->components, entity)) return;
+	if (!cpool_get(cm_type->components, entity)) return;
 
 	Manager_DeleteComponent(ecs, cm_type, entity);
 	Manager_UpdateCollections(ecs, entity);
@@ -116,4 +123,13 @@ EntityArchetype* ECS_EntityRegisterArchetype(ECS *ecs, const char *name, const c
 	}
 
 	return arch;
+}
+
+void ECS_EntityFreeArchetype(EntityArchetype *archetype)
+{
+	if (!archetype) return;
+
+	free((char *)archetype->name);
+	free(archetype->components);
+	free(archetype);
 }

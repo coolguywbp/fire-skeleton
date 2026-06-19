@@ -2,7 +2,10 @@
 #ifndef MAIN_H
 #define MAIN_H
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_main.h>
+// NOTE: <SDL3/SDL_main.h> is intentionally NOT included here. It provides the
+// program entry point and must be included in exactly one TU (main.c). Pulling
+// it into this shared header defines main() in every TU (a link-time duplicate
+// on platforms like Emscripten that need a real entry wrapper).
 #include <SDL3_image/SDL_image.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <math.h>

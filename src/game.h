@@ -28,6 +28,8 @@ typedef struct{
   int sceneId;
 } GameState;
 
+typedef struct Benchmark Benchmark;
+
 struct Game {
   SDL_Window *window;
   SDL_Renderer *renderer;
@@ -45,7 +47,9 @@ struct Game {
   
   EntityArchetype **archetypes;
   SDL_Texture **images;
-  
+
+  Benchmark *bench;
+
   bool debug;
   bool is_running;
 
@@ -53,6 +57,10 @@ struct Game {
   float dtime;
   uint64_t lastFrameCounter;
   uint64_t lastFrameRateUpdate;
+
+  // Windowed FPS averaging.
+  double frameAccumTime;
+  int frameAccumCount;
 };
 
 bool game_new(struct Game **game);

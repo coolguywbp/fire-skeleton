@@ -30,7 +30,7 @@ hashset_t* hs_alloc(size_t initial_size)
     hs->buckets = calloc(initial_size, sizeof(bucket_t *));
     hs->storage = mp_init(initial_size, sizeof(bucket_t));
     hs->size = initial_size;
-
+    hs->count = 0;
     return hs;
 }
 
@@ -46,6 +46,7 @@ void hs_resize(hashset_t *hs)
     size_t oldsize = hs->size;
     size_t newsize = hs->size * 2;
 
+    LOG_DEBUG("Resizing a hashset from %u to %u", oldsize, newsize);
     // Allocate new buckets array
     bucket_t **new_buckets = calloc(newsize, sizeof(bucket_t *));
 
@@ -75,6 +76,7 @@ void hs_resize(hashset_t *hs)
 
 void hs_set(hashset_t *hs, hash_t hash)
 {
+    LOG_DEBUG("Setting a new value to a hashset (count %d | size %u)", hs->count, hs->size);
     if (hs->count > (float)hs->size * 0.7) hs_resize(hs);
 
     size_t idx = GET_IDX(hs, hash);
@@ -123,6 +125,30 @@ hash_t hs_next(hashset_t *hs, hash_t hash)
     // Get the last entry in the bucket.
     while(bk->next) bk = bk->next;
     return bk->hash;
+}
+
+void hs_test(hashset_t *hs, const char **values){
+  LOG_DEBUG("Hashset visualization");
+  // printf("\nHashset visualization:\n");
+  for (int i = 0; i < (int)hs->size; i++) {
+      printf("Bucket %d: ", i);
+      bucket_t* bk = hs->buckets[i];
+      while (bk != NULL) {
+          printf("%x -> ", bk->hash);
+          bk = bk->next;
+      }
+      printf("NULL\n");
+  }
+  
+  LOG_DEBUG("Checking if all values are present:");
+  int found_count = 0;
+  int i = 0;
+  while (values[i]){
+    bool found = hs_get(hs, hash_string(values[i]));
+    printf("%s: %s\n", values[i], found ? "true" : "false");
+    if (found) found_count++;
+    i++;
+  }
 }
 
 void hs_clear(hashset_t *hs, hash_t hash)

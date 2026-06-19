@@ -1,4 +1,7 @@
 #include "ecs_manager.h"
+#include "ecs_hash.h"
+#include "ecs_hashset.h"
+#include "logger.h"
 
 int string_arr_to_type(hash_t **dst, const char **src)
 {
@@ -34,12 +37,14 @@ bool Manager_RegisterComponentType(ECS *ecs, ComponentType *type)
 	type = ht_insert(ecs->cm_types, type->type_hash, type);
 	if (type == NULL) return false;
 
-	type->components = ht_alloc(ecs->alloc_info.components, type->type_size);
+	type->components = cpool_alloc(ecs->alloc_info.components, type->type_size);
 	if (!type->components) {
 		free((char *)type->type);
 		ht_delete(ecs->cm_types, type->type_hash);
 		return false;
 	}
+
+  LOG_DEBUG("Registered component: %s", type->type);
 
 	return true;
 }
@@ -57,7 +62,7 @@ Component* Manager_CreateComponent(ECS *ecs, ComponentType *type, hash_t id)
 	assert(ecs && type);
 
 	// Create the component
-	Component *comp = ht_insert(type->components, id, NULL);
+	Component *comp = cpool_insert(type->components, id, NULL);
 	if (!comp) return NULL;
 
 	// And run the creation function.
@@ -70,7 +75,7 @@ Component* Manager_GetComponent(ECS *ecs, ComponentType *type, hash_t id)
 {
 	assert(ecs);
 
-	return ht_get(type->components, id);
+	return cpool_get(type->components, id);
 }
 
 Component* Manager_GetComponentByID(ECS *ecs, ComponentID id)
@@ -80,21 +85,21 @@ Component* Manager_GetComponentByID(ECS *ecs, ComponentID id)
 	ComponentType *cm_type = ht_get(ecs->cm_types, id.type);
 	if (!cm_type) return NULL;
 
-	return ht_get(cm_type->components, id.id);
+	return cpool_get(cm_type->components, id.id);
 }
 
 void Manager_DeleteComponent(ECS *ecs, ComponentType *type, hash_t id)
 {
 	assert(ecs && type && type->components);
 
-	Component *comp = ht_get(type->components, id);
+	Component *comp = cpool_get(type->components, id);
 	if (!comp) return;
 
 	// Call the dtor.
 	if (type->dl_func) type->dl_func(comp);
 
 	// Delete the component and it's data.
-	ht_delete(type->components, id);
+	cpool_delete(type->components, id);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -133,7 +138,7 @@ void Manager_DeleteEntity(ECS *ecs, Entity entity)
 	// possible components and delete the ones matching the entity.
 	HT_FOR(ecs->cm_types) {
 		ComponentType *cm_type = ht_get(ecs->cm_types, idx);
-		if (ht_get(cm_type->components, entity))
+		if (cpool_get(cm_type->components, entity))
 			Manager_DeleteComponent(ecs, cm_type, entity);
 	}
 
@@ -144,6 +149,9 @@ void Manager_DeleteEntity(ECS *ecs, Entity entity)
 	}
 
     ha_delete(ecs->entities, entity);
+
+	// Queues shrank, so the cached update ranges are stale.
+	ecs->update_systems_dirty = true;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -155,27 +163,61 @@ bool Manager_RegisterSystem(ECS *ecs, System *info)
 	info->ent_queue = ha_alloc(128, sizeof(hash_t));
     ERR_RET_ZERO(info->ent_queue, "Error creating system entity queue.\n");
 
+	// Resolve the archetype's component types once, so the per-entity update
+	// loop only needs a single hashtable lookup per component (not two).
+	info->comp_types = NULL;
+	if (info->archetype && info->archetype->size > 0) {
+		info->comp_types = malloc(sizeof(ComponentType *) * info->archetype->size);
+		ERR_RET_ZERO(info->comp_types, "Error allocating system component types.\n");
+		for (uint32_t i = 0; i < info->archetype->size; i++)
+			info->comp_types[i] = ht_get(ecs->cm_types, info->archetype->components[i]);
+	}
+
 	System *_info = ht_insert(ecs->systems, hash_string(info->name), info);
+	if (!_info) return false;
 
-    // Circular references in the dependencies cause undefined behavior
-    // TODO: this is a simplistic implementation that does not handle
-    // dependencies very well. Improve this.
-    size_t first_insert = 0;
-    size_t last_insert = ecs->system_order.size;
-    for (size_t idx = 0; idx < ecs->system_order.size; idx++) {
-        System *system = (System *)dyn_get(&ecs->system_order, idx);
-        if (system->dependencies && hs_get(system->dependencies, info->name_hash))
-            if (idx < last_insert) last_insert = idx;
-        if (info->dependencies && hs_get(info->dependencies, system->name_hash))
-            first_insert = idx;
-    }
+	LOG_DEBUG("Registering system: %s", info->name);
 
-    size_t insert = first_insert > last_insert ? first_insert : last_insert;
-    dyn_insert(&ecs->system_order, insert, &_info);
+	// Resolve dependency ordering against already-registered systems.
+	// Circular references in the dependencies cause undefined behavior.
+	// TODO: this is a simplistic implementation that does not handle
+	// dependencies very well. Improve this.
+	size_t first_insert = 0;
+	size_t last_insert = ecs->system_order.size;
 
-    ecs->update_systems_dirty = true;
+	for (size_t idx = 0; idx < ecs->system_order.size; idx++) {
+		System **system_ptr = (System **)dyn_get(&ecs->system_order, idx);
+		System *system = system_ptr ? *system_ptr : NULL;
+		if (!system) continue;
 
-	return _info ? true : false;
+		// If an existing system depends on the new one, the new one must be
+		// ordered before it.
+		if (system->dependencies && hs_get(system->dependencies, info->name_hash))
+			if (idx < last_insert) last_insert = idx;
+		// If the new system depends on an existing one, it must be ordered
+		// after it.
+		if (info->dependencies && hs_get(info->dependencies, system->name_hash))
+			first_insert = idx;
+	}
+
+	size_t insert = first_insert > last_insert ? first_insert : last_insert;
+
+	// system_order must reference the canonical, hashtable-owned copy (_info),
+	// whose address is stable (mempool-backed), NOT the temporary `info` shell.
+	// dyn_append handles the empty-array case (dyn_insert misbehaves at size 0).
+	if (ecs->system_order.size == 0)
+		dyn_append(&ecs->system_order, &_info);
+	else
+		dyn_insert(&ecs->system_order, insert, &_info);
+
+	ecs->update_systems_dirty = true;
+
+	// The hashtable copied the struct on insert and now owns the canonical
+	// System. _info shares info's member pointers, so free only the temporary
+	// shell here; ht_delete will release the table copy on unregister.
+	free(info);
+
+	return true;
 }
 
 System* Manager_GetSystem(ECS *ecs, const char *name)
@@ -196,7 +238,15 @@ void Manager_UnregisterSystem(ECS *ecs, System *system)
 	EventQueue_Free(system->ev_queue);
 	free((char *)system->name);
 	ha_free(system->ent_queue);
+    if (system->dependencies) hs_free(system->dependencies);
 
+	// The system owns its archetype, user data and resolved type table.
+	ECS_EntityFreeArchetype(system->archetype);
+	free(system->udata);
+	free(system->comp_types);
+
+	// ht_delete frees the table-owned System chunk. `system` points into the
+	// hashtable's mempool storage, so it must NOT be free()'d directly.
 	ht_delete(ecs->systems, system->name_hash);
 }
 
@@ -216,6 +266,9 @@ void Manager_UpdateCollections(ECS *ecs, Entity entity)
 			ha_delete(system->ent_queue, entity);
 		}
 	}
+
+	// System entity queues changed, so the cached update ranges are stale.
+	ecs->update_systems_dirty = true;
 }
 
 bool Manager_ShouldSystemQueueEntity(ECS *ecs, System *system, Entity entity)
@@ -244,11 +297,11 @@ void Manager_UpdateSystem(ECS *ecs, System *system, Entity entity)
 	const size_t size = system->archetype->size;
 	Component *components[size];
 
-	// Systems must have an update function to be registered, and entities don't
-	// get in the queue without having all the required components.
+	// Component types are pre-resolved (system->comp_types), so this is a single
+	// hashtable lookup per component instead of two (type + component).
 	for (size_t idx = 0; idx < size; idx++) {
-		ComponentID id = {entity, system->archetype->components[idx]};
-		components[idx] = Manager_GetComponentByID(ecs, id);
+		ComponentType *ct = system->comp_types[idx];
+		components[idx] = ct ? cpool_get(ct->components, entity) : NULL;
 	}
 
 	system->up_func(entity, components, system->udata);

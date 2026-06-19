@@ -3,8 +3,13 @@
 #define CLAY_IMPLEMENTATION
 
 #include "game.h"
+#include <SDL3/SDL_main.h> // entry point; include in exactly one TU
 
-int main(void) {
+int main(int argc, char *argv[]) {
+  // SDL (via SDL_main.h) renames main to SDL_main, which expects this exact
+  // signature; the arguments are unused.
+  (void)argc;
+  (void)argv;
   // On Linux force X11 for more predictable behavior
   #ifdef __linux__
   setenv("SDL_VIDEODRIVER", "x11", 1);

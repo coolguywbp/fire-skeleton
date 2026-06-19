@@ -71,7 +71,8 @@ void* ha_insert(hasharray_t *ha, hash_t idx, void *data) {
     }
 
     ha->count++;
-    if (idx > ha->last_filled) {
+    // last_filled is an exclusive upper bound (highest filled index + 1).
+    if (idx >= ha->last_filled) {
         ha->last_filled = idx + 1;
     }
     if (idx == ha->first_free) {
@@ -156,5 +157,10 @@ void ha_delete(hasharray_t *ha, hash_t idx)
     ha->count--;
 
     if (idx < ha->first_free) ha->first_free = idx;
-    if (idx == ha->last_filled) ha->last_filled--;
+    // If we removed the highest filled slot, shrink the exclusive upper bound
+    // back past any now-empty trailing slots. Guard against underflow.
+    if (idx + 1 == ha->last_filled) {
+        while (ha->last_filled > 0 && !ha->entries[ha->last_filled - 1])
+            ha->last_filled--;
+    }
 }
