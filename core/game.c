@@ -18,6 +18,7 @@
 #include "ecs_entity.h"
 #include "ui.h"
 #include "ui_lua.h"
+#include "g3d.h"
 
 #include <ctype.h>
 
@@ -436,6 +437,7 @@ void game_update(struct Game *G) {
     case SCENE_LEVEL:
       want = (G->state->mode == MODE_BENCHMARK) ? "scripts/benchmark.lua"
            : (G->state->mode == MODE_SLOTS)     ? "scripts/slots.lua"
+           : (G->state->mode == MODE_CUBE)      ? "scripts/cube.lua"
                                                 : "scripts/invaders.lua";
       break;
     default:
@@ -472,6 +474,10 @@ void game_render(struct Game *G) {
     // call into Lua (on_collision), so it must stay on the main thread.
     collision_update(G);
   }
+
+  // Software 3D primitives (g3d.*) emitted from on_ui this frame: draw over the
+  // sprites and under the Clay UI overlay.
+  g3d_flush(G->renderer);
 
   SDL_Clay_RenderClayCommands(G->clayRendererData, &G->ui->renderCommands);
   SDL_RenderPresent(G->renderer);

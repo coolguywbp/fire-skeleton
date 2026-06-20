@@ -6,6 +6,7 @@
 #include "components.h"   // TransformComponent / VelocityComponent / SpriteComponent + COMPONENT_ID
 #include "ecs_entity.h"   // ECS_EntityNew / Delete / GetComponent / Exists / RegisterArchetype
 #include "ui_lua.h"       // ui.* immediate-mode toolkit
+#include "g3d.h"          // g3d.* software 3D primitives
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -132,6 +133,7 @@ static int image_id_from_name(const char *n) {
   if (strcmp(n, "shot_invaders")  == 0) return 2;
   if (strcmp(n, "shot_slots")     == 0) return 3;
   if (strcmp(n, "shot_benchmark") == 0) return 4;
+  if (strcmp(n, "shot_cube")      == 0) return 5;
   return 0;
 }
 
@@ -467,6 +469,7 @@ static int l_scene(lua_State *L) {
     case SCENE_LEVEL:
       n = (G->state->mode == MODE_BENCHMARK) ? "benchmark"
         : (G->state->mode == MODE_SLOTS)     ? "slots"
+        : (G->state->mode == MODE_CUBE)      ? "cube"
                                              : "play";
       break;
     default: n = "menu"; break;
@@ -487,6 +490,7 @@ static int l_goto_scene(lua_State *L) {
   else if (!strcmp(name, "play"))      { G->state->mode = MODE_INVADERS;  G->state->sceneId = SCENE_LEVEL; }
   else if (!strcmp(name, "benchmark")) { G->state->mode = MODE_BENCHMARK; G->state->sceneId = SCENE_LEVEL; }
   else if (!strcmp(name, "slots"))     { G->state->mode = MODE_SLOTS;     G->state->sceneId = SCENE_LEVEL; }
+  else if (!strcmp(name, "cube"))      { G->state->mode = MODE_CUBE;      G->state->sceneId = SCENE_LEVEL; }
   else return luaL_error(L, "goto_scene: unknown scene '%s'", name);
   return 0;
 }
@@ -609,6 +613,8 @@ static void register_api(lua_State *L) {
 
   // Immediate-mode UI toolkit (the `ui` table).
   ui_lua_register(L);
+  // Software 3D primitives (the `g3d` table).
+  g3d_register(L);
 }
 
 // ---------------------------------------------------------------------------

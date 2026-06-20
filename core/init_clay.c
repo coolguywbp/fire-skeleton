@@ -1,6 +1,7 @@
 #include "init_clay.h"
 #include "ui.h"
 #include "ui_lua.h"
+#include "g3d.h"
 #include "clay_renderer.h"
 
 void HandleClayErrors(Clay_ErrorData errorData) {
@@ -66,6 +67,7 @@ bool ui_init_clay(struct Game *G) {
 bool ui_update(struct Game *G) {
   Clay_SetLayoutDimensions(G->ui->clayDimensions);
   ui_lua_begin_frame();          // reset the per-frame UI string/id arena
+  g3d_begin_frame();             // reset the per-frame 3D primitive list
   Clay_BeginLayout();
   ui_create_layout(G);
   G->ui->renderCommands = Clay_EndLayout();

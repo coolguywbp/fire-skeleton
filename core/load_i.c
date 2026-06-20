@@ -7,11 +7,11 @@ SDL_Texture **load_images(SDL_Renderer *renderer) {
   int length = IMAGE_COUNT;
 
   // Index order IS the image id used by scripts (see image_id_from_name):
-  //   0 skeleton/menu, 1 sheet/sprite, 2 invaders, 3 slots, 4 benchmark.
-  // 2..4 are demo thumbnails for the demo-picker tiles.
+  //   0 skeleton/menu, 1 sheet/sprite, 2 invaders, 3 slots, 4 benchmark, 5 cube.
+  // 2..5 are demo thumbnails for the demo-picker tiles.
   char *image_names[] = {
   "MenuFireSkeleton.png", "SpriteSheet1.png",
-  "shot_invaders.png", "shot_slots.png", "shot_benchmark.png"
+  "shot_invaders.png", "shot_slots.png", "shot_benchmark.png", "shot_cube.png"
   };
  
   SDL_Texture **textures = malloc(length * sizeof(SDL_Texture*));

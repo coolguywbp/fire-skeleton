@@ -116,7 +116,8 @@ typedef enum {
 typedef enum {
   MODE_INVADERS = 0,
   MODE_BENCHMARK,
-  MODE_SLOTS
+  MODE_SLOTS,
+  MODE_CUBE
 } GameMode;
 
 #endif
