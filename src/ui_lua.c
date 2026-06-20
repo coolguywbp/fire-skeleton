@@ -39,6 +39,8 @@ static Clay_String clay_str(const char *s) {
 // Defined further down (layout helpers), used by the in-flow button too.
 static Clay_Padding opt_padding(lua_State *L, int t, const char *key);
 static void apply_border(lua_State *L, int t, Clay_ElementDeclaration *d);
+static Clay_SizingAxis size_axis(lua_State *L, int t, const char *key);
+static const char *opt_str(lua_State *L, int t, const char *key, const char *def);
 
 // A unique interned element id for this frame ("ui0", "ui1", ...).
 static Clay_String auto_id(void) {
@@ -171,9 +173,14 @@ static int ui_button_inflow(lua_State *L, const char *id) {
   if (opt && pad.left == 0 && pad.right == 0 && pad.top == 0 && pad.bottom == 0)
     pad = (Clay_Padding){ 8, 8, 8, 8 };
 
+  const char *al = opt_str(L, opt, "align", "left");
+
   Clay_ElementDeclaration d = {0};
   d.layout.padding = pad;
-  d.layout.childAlignment.x = CLAY_ALIGN_X_CENTER;
+  d.layout.sizing.width  = size_axis(L, opt, "width");
+  d.layout.sizing.height = size_axis(L, opt, "height");
+  d.layout.childAlignment.x = !strcmp(al, "center") ? CLAY_ALIGN_X_CENTER
+                            : !strcmp(al, "right")  ? CLAY_ALIGN_X_RIGHT : CLAY_ALIGN_X_LEFT;
   d.layout.childAlignment.y = CLAY_ALIGN_Y_CENTER;
   d.backgroundColor = bg;
   d.cornerRadius = CLAY_CORNER_RADIUS((float)opt_num(L, opt, "radius", 0));
