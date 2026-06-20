@@ -146,33 +146,55 @@ interactive. The HUD shows the live object count, FPS, and benchmark phase/peak,
 letting you watch in real time how many independently-simulated, individually-
 rendered sprites the architecture sustains.
 
-## Optimization work
+## Why it's fast
 
-The project started from a non-building state. It was first made to build and
-run cleanly — every change validated against an AddressSanitizer / LeakSanitizer
-build that must stay free of memory errors and leaks — and then profiled and
-optimized.
+The whole design is **data-oriented**: keep the hot per-frame loop touching
+tightly packed memory and doing as little as possible per entity.
 
-The guiding principle was to **measure before optimizing**, and the benchmark
-was the main tool. Getting it to measure the *right thing* mattered as much as
-the code: an early version spawned entities in large per-frame bursts, so it was
-really measuring spawn cost rather than steady-state simulation, and masked the
-true bottleneck. Spreading spawns evenly across frames and averaging the frame
-rate over a sliding window made the numbers honest.
+- **Dense sparse-set component storage.** Each component type lives in one
+  contiguous, packed array; a sparse index maps an entity id straight to its
+  slot. Access is plain array indexing — **O(1), no hashing, no pointer
+  chasing** — so the CPU streams component data with great cache locality. This
+  is the single biggest reason it scales.
+- **Components are plain inline data** (`x, y, w, h` — not pointers to heap), so
+  a whole array of them is one contiguous block with zero indirection.
+- **Systems resolve their component pointers once, at registration.** The
+  per-entity update is then a couple of array lookups and some arithmetic — no
+  per-entity hash, no allocation.
+- **The hot path stays in C; Lua only steers.** Game logic runs in Lua a handful
+  of times per frame (spawning, events, scoring), never once-per-entity, so
+  scripting adds essentially nothing to the cost of simulating 40k entities.
+  Bulk spawning skips component writes the prefab doesn't set.
+- **Opt-in collision.** Only entities with a `CollisionComponent` enter the
+  spatial hash, so the benchmark's pure-load sprites pay nothing for collision.
+- **O(1) churn, no hot-path allocation.** Deletes are swap-removes; the update
+  loop allocates nothing per frame.
+- **A barrier-based worker pool** can fan thread-safe systems across cores,
+  while renderer-touching systems stay on the main thread.
 
-With a trustworthy benchmark, targeted A/B measurements (toggling rendering and
-the ECS update on/off) located the real cost. It was **not** rendering and
-**not** the update arithmetic, but **how component data was reached**: components
-lived in per-type hashtables, so every hot-loop access paid hashing and
-pointer-chasing with poor cache behavior. Moving component data inline and then
-replacing the hashtables with a **dense sparse-set** — contiguous arrays with
-O(1) array-indexed lookups — was the decisive change, more than doubling
-throughput.
+Every decision was driven by the benchmark, not intuition — **measure before
+optimizing**: A/B toggling rendering and the ECS update showed the cost was
+*how component data was reached*, not the math or the draw calls, which is what
+pointed straight at the storage layout.
 
-Beyond storage: removing redundant work from the per-entity update path, caching
-values recomputed every frame, and a worker pool for parallel system updates.
-The repeated lesson — parallelizing or batching only helps where the real
-bottleneck is — is why the benchmark, not intuition, drove every decision.
+### What could be faster still
+
+- **Batch the rendering.** Each sprite is currently its own `SDL_RenderTexture`
+  call; collapsing them into a single `SDL_RenderGeometry` (one big textured
+  quad buffer) would cut draw-call overhead and is likely the next ceiling at
+  high counts. *(An early attempt black-screened on this GPU — worth revisiting
+  carefully.)*
+- **SoA layout + SIMD.** Splitting `x/y/vx/vy` into separate arrays and
+  vectorizing the motion update (SSE/AVX) could process 4–8 entities per
+  instruction.
+- **Spatial grid for cursor repulsion.** Right now every sprite tests its
+  distance to the cursor each frame; a grid would let only nearby sprites pay.
+- **Off-screen culling** so sprites outside the window skip rendering.
+- **Drop redundant per-frame writes** (e.g. recomputing sprite aspect/width
+  every frame) and smooth out the component pool's realloc growth spikes.
+- **Lean harder on the worker pool / GPU.** Motion is embarrassingly parallel;
+  once batching shifts the bottleneck back onto simulation, splitting it across
+  more cores — or moving it to the GPU — becomes worthwhile.
 
 ## Building & running
 
