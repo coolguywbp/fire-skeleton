@@ -7,6 +7,19 @@
 
 local L = require("menu_view")
 
+-- On the web there's nothing to exit to: a page can't close its own tab, and
+-- quitting just stops the render loop (emscripten_cancel_main_loop), which
+-- leaves the canvas frozen and looks like a hang. Drop EXIT from the web build.
+if IS_WEB then
+  local function strip(nodes, id)
+    for i = #nodes, 1, -1 do
+      if nodes[i].id == id then table.remove(nodes, i)
+      elseif nodes[i].children then strip(nodes[i].children, id) end
+    end
+  end
+  strip(L.menu.tree, "exit")
+end
+
 local main = mount(L.menu)
   :on("play",    function() goto_scene("demos")   end)
   :on("options", function() goto_scene("options") end)
