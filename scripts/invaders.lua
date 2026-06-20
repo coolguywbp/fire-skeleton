@@ -1,29 +1,200 @@
 -- scripts/invaders.lua
 --
--- Stage 2 placeholder: just enough to prove the Play mode loads its own script
--- (a movable player). The full Space Invaders clone arrives in Stage 3.
+-- A small Space Invaders clone built entirely on the Lua scripting layer.
+-- Movement is authored in Lua and synced to the ECS via set_pos(); the C side
+-- handles rendering (SpriteRenderSystem) and collision detection (spatial hash
+-- over CollisionComponent), calling back into on_collision().
+--
+-- Controls: Left/Right to move, Space to shoot.
 
-prefab "Player" {
-  Transform = { w = 64, h = 64 },
-  Sprite    = { image = "skeleton" },
-  Collision = {},
-}
+-- Tuning ---------------------------------------------------------------------
+local IW, IH       = 48, 48        -- invader size
+local COLS, ROWS   = 8, 4
+local GAP_X, GAP_Y = 36, 28        -- spacing between invaders
+local MARGIN_X     = 120
+local MARGIN_Y     = 80
 
-local player
-local px, py
-local SPEED = 16
+local PLAYER_W     = 64
+local PLAYER_SPEED = 520           -- px/sec (dt-scaled; the level is uncapped)
+local BULLET_SPEED = 760           -- px/sec, upward
+local BOMB_SPEED   = 330           -- px/sec, downward
+local INV_SPEED    = 55            -- px/sec, horizontal
+local INV_DROP     = 26            -- px dropped when the formation reverses
+local SHOOT_CD     = 0.35          -- seconds between player shots
+local BOMB_EVERY   = 1.1           -- seconds between enemy shots
 
-function on_start()
-  px = SCREEN_W / 2 - 32
+prefab "Player"  { Transform = { w = PLAYER_W, h = 64 }, Sprite = { image = "skeleton" }, Collision = {} }
+prefab "Invader" { Transform = { w = IW, h = IH },       Sprite = { image = "skeleton" }, Collision = {} }
+prefab "Bullet"  { Transform = { w = 10, h = 22 },       Sprite = { image = "skeleton" }, Collision = {} }
+prefab "Bomb"    { Transform = { w = 10, h = 22 },       Sprite = { image = "skeleton" }, Collision = {} }
+
+-- State ----------------------------------------------------------------------
+local player, px, py
+local invaders, bullets, bombs     -- keyed by entity id
+local fx, fy, dir                  -- formation offset + direction
+local shoot_cd, bomb_t
+local score, lives, state          -- state: "play" | "over"
+
+local function set_hud()
+  hud(string.format("SCORE %d    LIVES %d", score, lives))
+end
+
+local function destroy_all(t)
+  for id in pairs(t) do destroy(id) end
+end
+
+local function spawn_wave()
+  fx, fy, dir = 0, 0, 1
+  for r = 0, ROWS - 1 do
+    for c = 0, COLS - 1 do
+      local bx = MARGIN_X + c * (IW + GAP_X)
+      local by = MARGIN_Y + r * (IH + GAP_Y)
+      local id = spawn_at("Invader", bx, by)
+      invaders[id] = { bx = bx, by = by }
+    end
+  end
+end
+
+local function new_game()
+  if player then destroy(player) end
+  if invaders then destroy_all(invaders) end
+  if bullets then destroy_all(bullets) end
+  if bombs then destroy_all(bombs) end
+
+  invaders, bullets, bombs = {}, {}, {}
+  score, lives, state = 0, 3, "play"
+  shoot_cd, bomb_t = 0, 0
+  px = SCREEN_W / 2 - PLAYER_W / 2
   py = SCREEN_H - 110
   player = spawn_at("Player", px, py)
-  hud("PLAY (work in progress) -- arrows to move")
+  spawn_wave()
+  set_hud()
+end
+
+local function next_wave()
+  destroy_all(bullets); destroy_all(bombs)
+  bullets, bombs = {}, {}
+  spawn_wave()
+  state = "play"
+  set_hud()
+end
+
+local function game_over()
+  state = "over"
+  hud(string.format("GAME OVER -- SCORE %d  (restarting...)", score))
+  start(function() wait(2.0); new_game() end)
+end
+
+local function player_hit()
+  lives = lives - 1
+  set_hud()
+  if lives <= 0 then game_over() end
+end
+
+local function resolve_hit(bullet_id, invader_id)
+  destroy(bullet_id);  bullets[bullet_id]   = nil
+  destroy(invader_id); invaders[invader_id] = nil
+  score = score + 10
+  set_hud()
+end
+
+local function drop_bomb()
+  local ids = {}
+  for id in pairs(invaders) do ids[#ids + 1] = id end
+  if #ids == 0 then return end
+  local v = invaders[ids[math.random(#ids)]]
+  local x, y = v.bx + fx + IW / 2, v.by + fy + IH
+  local id = spawn_at("Bomb", x, y)
+  bombs[id] = { x = x, y = y }
+end
+
+-- Callbacks ------------------------------------------------------------------
+function on_start()
+  new_game()
 end
 
 function on_key(key)
-  if key == "left"  then px = px - SPEED end
-  if key == "right" then px = px + SPEED end
+  if state ~= "play" then return end
+  if key == "space" and shoot_cd <= 0 then
+    local bx, by = px + PLAYER_W / 2 - 5, py - 28
+    local id = spawn_at("Bullet", bx, by)
+    bullets[id] = { x = bx, y = by }
+    shoot_cd = SHOOT_CD
+  end
+end
+
+function on_update(dt)
+  if state ~= "play" then return end
+
+  -- Player (held-key movement).
+  if key_down("left")  then px = px - PLAYER_SPEED * dt end
+  if key_down("right") then px = px + PLAYER_SPEED * dt end
   if px < 0 then px = 0 end
-  if px > SCREEN_W - 64 then px = SCREEN_W - 64 end
+  if px > SCREEN_W - PLAYER_W then px = SCREEN_W - PLAYER_W end
   set_pos(player, px, py)
+  if shoot_cd > 0 then shoot_cd = shoot_cd - dt end
+
+  -- Player bullets fly up; despawn off the top.
+  for id, b in pairs(bullets) do
+    b.y = b.y - BULLET_SPEED * dt
+    if b.y < -30 then destroy(id); bullets[id] = nil
+    else set_pos(id, b.x, b.y) end
+  end
+
+  -- Invader formation: move together; reverse + drop at the screen edges.
+  local minx, maxx, any = math.huge, -math.huge, false
+  for _, v in pairs(invaders) do
+    any = true
+    local x = v.bx + fx
+    if x < minx then minx = x end
+    if x + IW > maxx then maxx = x + IW end
+  end
+
+  if not any then
+    -- Wave cleared: brief pause, then a fresh wave (score carries over).
+    state = "over"
+    hud(string.format("WAVE CLEAR!   SCORE %d", score))
+    start(function() wait(1.5); next_wave() end)
+    return
+  end
+
+  local delta = INV_SPEED * dir * dt
+  if (maxx + delta) > SCREEN_W or (minx + delta) < 0 then
+    dir = -dir
+    fy = fy + INV_DROP
+  else
+    fx = fx + delta
+  end
+
+  local reached = false
+  for id, v in pairs(invaders) do
+    local y = v.by + fy
+    set_pos(id, v.bx + fx, y)
+    if y + IH >= py then reached = true end  -- invaders reached the player line
+  end
+  if reached then game_over(); return end
+
+  -- Enemy fire.
+  bomb_t = bomb_t + dt
+  if bomb_t >= BOMB_EVERY then bomb_t = 0; drop_bomb() end
+
+  -- Bombs fall; despawn off the bottom.
+  for id, b in pairs(bombs) do
+    b.y = b.y + BOMB_SPEED * dt
+    if b.y > SCREEN_H + 30 then destroy(id); bombs[id] = nil
+    else set_pos(id, b.x, b.y) end
+  end
+end
+
+function on_collision(a, b)
+  -- Player bullet hits an invader.
+  if bullets[a] and invaders[b] then resolve_hit(a, b); return end
+  if bullets[b] and invaders[a] then resolve_hit(b, a); return end
+
+  -- Enemy bomb hits the player.
+  if (bombs[a] and b == player) or (bombs[b] and a == player) then
+    local bid = bombs[a] and a or b
+    destroy(bid); bombs[bid] = nil
+    player_hit()
+  end
 end

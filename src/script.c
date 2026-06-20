@@ -417,6 +417,27 @@ static int l_hud(lua_State *L) {
   return 0;
 }
 
+// Map a friendly lowercase key name (as on_key receives) to an SDL scancode.
+static SDL_Scancode scancode_from_name(const char *n) {
+  if (!strcmp(n, "left"))  return SDL_SCANCODE_LEFT;
+  if (!strcmp(n, "right")) return SDL_SCANCODE_RIGHT;
+  if (!strcmp(n, "up"))    return SDL_SCANCODE_UP;
+  if (!strcmp(n, "down"))  return SDL_SCANCODE_DOWN;
+  if (!strcmp(n, "space")) return SDL_SCANCODE_SPACE;
+  if (n[0] >= 'a' && n[0] <= 'z' && n[1] == '\0')
+    return (SDL_Scancode)(SDL_SCANCODE_A + (n[0] - 'a'));
+  return SDL_SCANCODE_UNKNOWN;
+}
+
+// key_down(name) -> bool. Live keyboard state, for held-key movement in
+// on_update (on_key only fires on the discrete press/repeat events).
+static int l_key_down(lua_State *L) {
+  SDL_Scancode sc = scancode_from_name(luaL_checkstring(L, 1));
+  const bool *state = SDL_GetKeyboardState(NULL);
+  lua_pushboolean(L, sc != SDL_SCANCODE_UNKNOWN && state && state[sc]);
+  return 1;
+}
+
 static void register_api(lua_State *L) {
   static const luaL_Reg fns[] = {
     {"log",        l_log},
@@ -429,6 +450,7 @@ static void register_api(lua_State *L) {
     {"count",      l_count},
     {"set_pos",    l_set_pos},
     {"get_pos",    l_get_pos},
+    {"key_down",   l_key_down},
     {"fps",        l_fps},
     {"hud",        l_hud},
     {NULL, NULL}
