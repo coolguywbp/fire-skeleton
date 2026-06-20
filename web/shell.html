@@ -49,6 +49,30 @@
     }
     @keyframes bob { 0%, 100% { transform: translateY(-20px); }
                      50%      { transform: translateY(20px);  } }
+    /* Rotate-to-landscape prompt. The game world is a fixed 4:3 landscape, so on
+       a tall portrait phone it can only letterbox to a small band. Rather than
+       crop gameplay (overscan) or CSS-rotate the canvas (which would misalign
+       touch input), we ask the player to turn the device; in landscape the game
+       fills the screen. Shown only on small portrait viewports (phones). */
+    #rotate {
+      display: none;
+      position: fixed; inset: 0; z-index: 20; background: #000; color: #fff;
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 28px; text-align: center; padding: 10vw; box-sizing: border-box;
+    }
+    @media (orientation: portrait) and (max-width: 820px) {
+      #rotate { display: flex; }
+    }
+    #rotate .icon {
+      font-size: clamp(64px, 22vw, 140px); line-height: 1; color: #e6783c;
+      animation: turn 2.4s ease-in-out infinite;
+    }
+    #rotate h2 { margin: 0; width: 100%; font-weight: 800; letter-spacing: .04em;
+                 font-size: clamp(20px, 7vw, 36px); overflow-wrap: anywhere; }
+    #rotate p { margin: 0; width: 100%; color: #aaa; overflow-wrap: anywhere;
+                font-size: clamp(12px, 3.2vw, 16px); }
+    @keyframes turn { 0%, 100% { transform: rotate(-90deg); }
+                      50%      { transform: rotate(0deg);   } }
   </style>
   <script type="text/javascript">
     // SDL (emscripten) attaches a keyboard handler that preventDefault()s
@@ -65,6 +89,11 @@
   </script>
 </head>
 <body>
+  <div id="rotate">
+    <div class="icon">&#x21BB;</div>
+    <h2>ROTATE YOUR DEVICE</h2>
+    <p>Best played in landscape</p>
+  </div>
   <div id="loading">
     <div class="col">
       <h1>FIRE<br>SKELETON</h1>
