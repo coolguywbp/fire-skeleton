@@ -288,7 +288,9 @@ void game_update(struct Game *G) {
   // In the level, ensure this scene's gameplay script is loaded, then drive its
   // per-frame logic. Leaving the level unloads it and clears the HUD.
   if (G->state->sceneId == SCENE_LEVEL) {
-    const char *want = "scripts/benchmark.lua";
+    const char *want = (G->state->mode == MODE_BENCHMARK)
+                         ? "scripts/benchmark.lua"
+                         : "scripts/invaders.lua";
     const char *cur = script_current_path(G);
     if (!cur || strcmp(cur, want) != 0) script_load(G, want);
     // Game-level scripted logic: runs once per frame, never per entity.

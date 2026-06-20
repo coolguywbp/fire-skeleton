@@ -19,7 +19,12 @@ void ui_hud(struct Game *G);
 Clay_String ToClayString(char* string);
 
 void ui_click_events(struct Game *G){
-  if (Clay_PointerOver(Clay_GetElementId(ToClayString("StartButton")))){
+  if (Clay_PointerOver(Clay_GetElementId(ToClayString("PlayButton")))){
+    G->state->mode = MODE_INVADERS;
+    G->state->sceneId = SCENE_LEVEL;
+  }
+  if (Clay_PointerOver(Clay_GetElementId(ToClayString("BenchmarkButton")))){
+    G->state->mode = MODE_BENCHMARK;
     G->state->sceneId = SCENE_LEVEL;
   }
   if (Clay_PointerOver(Clay_GetElementId(ToClayString("OptionsButton")))){
@@ -123,10 +128,12 @@ void ui_options_menu(struct Game *G, Clay_Sizing *claySize){
 void ui_main_menu(struct Game *G, Clay_Sizing *claySize){
 
   MenuItem *menuItems[] = {
-    &(MenuItem){.caption = "START", .id = "StartButton"},
+    &(MenuItem){.caption = "PLAY", .id = "PlayButton"},
+    &(MenuItem){.caption = "BENCHMARK", .id = "BenchmarkButton"},
     &(MenuItem){.caption = "OPTIONS", .id = "OptionsButton"},
     &(MenuItem){.caption = "EXIT", .id = "ExitButton"}
   };
+  const int menuItemCount = 4;
   CLAY(CLAY_ID("OuterContainer"),{
        .layout = {
         .layoutDirection = CLAY_TOP_TO_BOTTOM,
@@ -158,8 +165,8 @@ void ui_main_menu(struct Game *G, Clay_Sizing *claySize){
             .padding = CLAY_PADDING_ALL(16),
             .childGap = 16 },
       }) {
-          for (int i = 0; i < 3; i++) {
-            
+          for (int i = 0; i < menuItemCount; i++) {
+
             MenuItem *item = menuItems[i];
 
             CLAY(CLAY_SID(ToClayString(item->id)), {

@@ -26,6 +26,7 @@ typedef struct{
 
 typedef struct{
   int sceneId;
+  int mode;     // which gameplay script the level runs (see GameMode)
 } GameState;
 
 typedef struct Script Script;
@@ -78,5 +79,11 @@ typedef enum {
   SCENE_SHOP,
   SCENE_MAX
 } Scenes;
+
+// Which script the level loads. Set by the main menu (Play vs Benchmark).
+typedef enum {
+  MODE_INVADERS = 0,
+  MODE_BENCHMARK
+} GameMode;
 
 #endif
