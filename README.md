@@ -225,8 +225,9 @@ pointed straight at the storage layout.
 
 ## Building & running
 
-Two builds from the same sources: native Linux/GCC, and a (single-threaded)
-WebAssembly build via Emscripten that runs in the browser.
+Three builds from the same sources: native Linux/GCC, a Windows `.exe`
+cross-compiled with MinGW-w64, and a (single-threaded) WebAssembly build via
+Emscripten that runs in the browser.
 
 ### Native (Linux + GCC)
 
@@ -243,6 +244,24 @@ make clean
 **Controls:** the mouse navigates the menu. In **PLAY**: **← / →** to move,
 **Space** to shoot. In **BENCHMARK**: move the mouse to repel sprites. **Q /
 Esc** returns to the menu; **E** toggles the Clay debug overlay (debug builds).
+
+### Windows (cross-compiled from Linux with MinGW-w64)
+
+`make windows` cross-compiles a Windows `.exe` from Linux. The Windows SDL3
+stack (SDL3 + SDL3_image + SDL3_ttf, mingw-devel), Lua 5.4 and zlib are vendored
+under `vendor/{sdl3-win,lua-win,zlib-win}`, so it builds from a clean clone. The
+only requirement is the MinGW-w64 toolchain (`x86_64-w64-mingw32-gcc`).
+
+```sh
+make windows      # -> dist/windows/  (game.exe + SDL DLLs + assets/ + scripts/)
+make windows-run  # build, then run it under Wine to smoke-test on Linux
+```
+
+`dist/windows/` is self-contained — copy it to a Windows machine and run
+`game.exe`. Notes: the renderer is forced to OpenGL on Windows (SDL's default
+Direct3D path renders textures black under Wine's D3D9); the GCC runtime and
+winpthreads are linked statically, so only the three SDL DLLs ship alongside
+the exe.
 
 ### WebAssembly (Emscripten)
 

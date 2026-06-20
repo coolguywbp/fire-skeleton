@@ -7,6 +7,8 @@ game
 # from a fresh clone.
 web/*
 !web/shell.html
+# Windows cross-build output (the vendored Windows libs under vendor/ ARE kept).
+dist/
 Graphics.af*
 
 # Source recordings (the lightweight GIF in assets/ is committed instead)

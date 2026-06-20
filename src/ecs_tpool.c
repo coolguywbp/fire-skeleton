@@ -8,6 +8,9 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <unistd.h>
+#ifdef _WIN32
+#include <windows.h>   // GetSystemInfo (CPU count); sysconf is POSIX-only
+#endif
 
 struct tpool_t {
     size_t n; // worker threads
@@ -168,6 +171,12 @@ void tpool_run(tpool_t *p, tpool_fn fn, void *ctx, size_t start, size_t end)
 
 size_t tpool_hw_concurrency(void)
 {
+#ifdef _WIN32
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    return si.dwNumberOfProcessors > 0 ? (size_t)si.dwNumberOfProcessors : 1;
+#else
     long n = sysconf(_SC_NPROCESSORS_ONLN);
     return n > 0 ? (size_t)n : 1;
+#endif
 }

@@ -31,6 +31,12 @@ bool game_init_sdl(struct Game *G) {
   }
 
  
+  // On Windows prefer the OpenGL renderer. SDL would otherwise pick Direct3D,
+  // and the D3D9 path (what wine exposes) renders textures black; OpenGL works
+  // both under wine and on native Windows.
+#ifdef _WIN32
+  SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
+#endif
   G->renderer = SDL_CreateRenderer(G->window, NULL);
   if (!G->renderer) {
     fprintf(stderr, "Error creating Renderer: %s\n", SDL_GetError());

@@ -46,7 +46,7 @@ endif
 CFLAGS		= $(CFLAGS_BASE)
 LDLIBS		= $(LDLIBS_BASE)
 
-.PHONY: all debug clean run rebuild web web-clean
+.PHONY: all debug clean run rebuild web web-clean windows windows-run windows-clean
 
 $(BUILD_DIR):
 	$(MKDIR)
@@ -123,3 +123,46 @@ web:
 
 web-clean:
 	$(RM) web/game.html web/game.js web/game.wasm web/game.data
+
+# ----------------------------------------------------------------------------
+# Windows build (cross-compiled from Linux with MinGW-w64)
+#
+# Requires the mingw-w64 toolchain (x86_64-w64-mingw32-gcc). The Windows SDL3
+# stack (SDL3 + SDL3_image + SDL3_ttf, mingw-devel), Lua 5.4 and zlib are
+# vendored under vendor/{sdl3-win,lua-win,zlib-win}, so this builds from a clean
+# clone. Output goes to dist/windows/: game.exe plus the SDL DLLs, assets/ and
+# scripts/. Run it on Windows, or `make windows-run` to smoke-test under Wine.
+# ----------------------------------------------------------------------------
+WINCC		?= x86_64-w64-mingw32-gcc
+SDL3_WIN	?= $(CURDIR)/vendor/sdl3-win
+LUA_WIN		?= $(CURDIR)/vendor/lua-win
+ZLIB_WIN	?= $(CURDIR)/vendor/zlib-win
+WIN_OUT		?= dist/windows
+
+# gnu11 (not strict c11) so the mingw headers expose POSIX-ish functions, as on
+# the other targets. -O2, no -march=native (we target generic x86-64 Windows).
+# Do NOT define NDEBUG: the ECS registers its systems inside assert(...), so
+# disabling asserts would silently skip registration (matches the native build,
+# which keeps asserts enabled in release too).
+WIN_CFLAGS	= -std=gnu11 -O2 \
+		  -I$(SDL3_WIN)/include -I$(LUA_WIN)/include -I$(ZLIB_WIN)/include
+# SDL is linked via its import libs (DLLs shipped alongside the exe). Lua and
+# zlib are static. The GCC runtime and winpthreads are linked statically so the
+# exe needs only the three SDL DLLs at runtime, nothing from the mingw install.
+WIN_LDFLAGS	= -L$(SDL3_WIN)/lib -lSDL3_image -lSDL3_ttf -lSDL3 \
+		  -L$(LUA_WIN)/lib -llua -L$(ZLIB_WIN)/lib -lz \
+		  -static-libgcc -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic -lm
+
+windows:
+	@mkdir -p $(WIN_OUT)
+	$(WINCC) $(WIN_CFLAGS) $(SRCS) $(WIN_LDFLAGS) -o $(WIN_OUT)/$(TARGET).exe
+	@cp $(SDL3_WIN)/bin/*.dll $(WIN_OUT)/
+	@rm -rf $(WIN_OUT)/assets $(WIN_OUT)/scripts
+	@cp -r assets scripts $(WIN_OUT)/
+	@echo "Windows build -> $(WIN_OUT)/  (game.exe + SDL DLLs + assets + scripts)"
+
+windows-run: windows
+	cd $(WIN_OUT) && wine ./$(TARGET).exe
+
+windows-clean:
+	$(RM) -r $(WIN_OUT)
