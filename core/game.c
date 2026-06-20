@@ -245,8 +245,12 @@ void game_events(struct Game *G) {
       switch (G->event.key.scancode) {
       case SDL_SCANCODE_Q:
       case SDL_SCANCODE_ESCAPE:
-        G->state->sceneId = SCENE_MAIN_MENU;
-        //G->is_running = false;
+        // Back out one level: a demo (level) returns to the demo picker it was
+        // launched from, not all the way to the main menu; menus go to the main
+        // menu.
+        G->state->sceneId = (G->state->sceneId == SCENE_LEVEL)
+                                ? SCENE_MAIN_MENU_DEMOS
+                                : SCENE_MAIN_MENU;
         break;
       case SDL_SCANCODE_SPACE:
         break;
