@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <i>A hand-written game engine in pure C, built around a custom ECS — and a benchmark to prove it scales.</i>
+  <i>A hand-written 2D game engine in pure C — a custom ECS for speed, a Lua layer for gameplay — with a benchmark to prove it scales.</i>
 </p>
 
 <p align="center">
@@ -17,15 +17,22 @@
 ---
 
 An educational project written in **C11**, built to design and stress-test a
-custom **Entity Component System (ECS)** from scratch. The gameplay is
-intentionally minimal — the focus is the architecture and how far it scales. The
-engine, every data structure it relies on, the worker pool and the logger are
-all hand-written, with no third-party code beyond the windowing/UI libraries.
+custom **Entity Component System (ECS)** from scratch. The engine, every data
+structure it relies on, the worker pool and the logger are all hand-written,
+with no third-party code beyond the windowing/UI libraries.
+
+The hot path — simulating and rendering tens of thousands of entities — stays in
+C, while **game logic is written in Lua**. The main menu offers two modes, both
+driven by Lua scripts on top of the same engine:
+
+- **PLAY** — a small but complete **Space Invaders** clone.
+- **BENCHMARK** — an adaptive ECS stress test.
 
 The interface (menus, HUD) is built with **Clay**, an immediate-mode layout
 library.
 
-> Status: the engine works; there is no real game yet. Learning sandbox / WIP.
+> Status: a playable demo and a stress benchmark, both scripted in Lua. The
+> focus is the architecture and how far it scales. Learning sandbox / WIP.
 
 ## Results
 
@@ -45,9 +52,10 @@ workstation.
 | Area | Technology |
 |------|------------|
 | Language | C11 |
+| Game-logic scripting | [Lua 5.4](https://www.lua.org/) |
 | Windowing / input / rendering | [SDL3](https://www.libsdl.org/) |
 | Textures | SDL3_image |
-| Text / fonts | SDL3_ttf |
+| Text / fonts | SDL3_ttf ([Liberation Sans](https://github.com/liberationfonts/liberation-fonts), SIL OFL) |
 | Compression | zlib |
 | UI layout | [Clay](https://github.com/nicbarker/clay) (vendored as `src/clay.h`) |
 | Concurrency | POSIX threads |
@@ -78,9 +86,54 @@ The game layer is a classic `events → update → render` loop with scene
 management (menu, options, level); Clay builds the UI each frame and an SDL3
 backend (`src/clay_renderer.c`) draws it.
 
+## Game logic & scripting (Lua)
+
+Game logic lives in **Lua** (`scripts/`), embedded via a single main-thread
+state (`src/script.c`). The guiding rule is **script the rules, not the inner
+loop**: the heavy per-frame work — moving and rendering every entity — stays in
+C systems, while Lua drives the sparse, high-level decisions (spawning, waves,
+events, scoring). Lua is only ever called a handful of times per frame, never
+once-per-entity, so the throughput the engine is built for is preserved. Both
+the Space Invaders demo and the benchmark are *entirely* Lua scripts.
+
+Scripts get a small C API and a few callbacks:
+
+```lua
+-- a prefab is a named template -> registers an ECS archetype under the hood
+prefab "Invader" {
+  Transform = { w = 48, h = 48 },
+  Sprite    = { image = "skeleton" },
+  Collision = {},                  -- opt in to collision detection
+}
+
+function on_start()                -- scene setup
+  start(wave)                      -- run a coroutine-based "director"
+end
+
+function wave()                    -- reads top-to-bottom; wait() yields
+  for i = 1, 5 do spawn_at("Invader", 100 * i, -20); wait(0.5) end
+end
+
+function on_update(dt) ... end     -- once per frame (not per entity)
+function on_key(key)  ... end      -- "left"/"right"/"space"/...
+function on_collision(a, b) ... end -- C spatial-hash broad-phase calls back here
+```
+
+Exposed to Lua: `prefab`, `spawn` / `spawn_at` / `spawn_many` / `destroy` /
+`despawn` / `count`, `set_pos` / `get_pos`, `key_down`, `fps`, `hud`, the
+coroutine helpers `start` / `wait`, and `SCREEN_W` / `SCREEN_H`. Collisions use
+a uniform **spatial hash** over an opt-in `CollisionComponent`, so the
+benchmark's bouncing sprites (which lack it) cost nothing.
+
+**Hot reload:** the active script's file is watched, and on change a fresh Lua
+state is built and swapped in *only if it loads cleanly* — a syntax error leaves
+the running game untouched. Edit a `.lua`, save, and the scene rebuilds with no
+recompile.
+
 ## Benchmark
 
-Selecting **START** runs an interactive ECS stress benchmark:
+Selecting **BENCHMARK** runs an interactive ECS stress benchmark
+(`scripts/benchmark.lua`):
 
 1. Starts with a single bouncing sprite (very high FPS).
 2. Spawns more entities at a steady, frame-spread rate.
@@ -129,7 +182,7 @@ WebAssembly build via Emscripten.
 ### Native (Linux + GCC)
 
 Requires `gcc`, `make`, `pkg-config` and dev packages for SDL3, SDL3_image,
-SDL3_ttf and zlib.
+SDL3_ttf, zlib and Lua 5.4.
 
 ```sh
 make            # optimized release build -> ./game
@@ -138,9 +191,9 @@ make run        # build and run
 make clean
 ```
 
-**Controls:** mouse navigates the menu (and repels sprites in the level);
-**Q / Esc** returns to the menu; **E** toggles the Clay debug overlay (debug
-builds).
+**Controls:** the mouse navigates the menu. In **PLAY**: **← / →** to move,
+**Space** to shoot. In **BENCHMARK**: move the mouse to repel sprites. **Q /
+Esc** returns to the menu; **E** toggles the Clay debug overlay (debug builds).
 
 ### WebAssembly (Emscripten) — experimental / WIP
 
@@ -167,11 +220,13 @@ COOP-COEP), is driven by `requestAnimationFrame`, and bundles assets into
 
 ## By the numbers
 
-- ~**6,600** lines of hand-written C across **70 files**
-- ~**40%** of that is the engine itself — the ECS plus its data structures
+- ~**7,400** lines of hand-written C across **71 files**, plus ~**290** lines of
+  Lua game logic
+- ~**40%** of the C is the engine itself — the ECS plus its data structures
   (~2,500 lines: core, hashtables/arrays, the dense component pool, the thread
   pool)
-- The rest: rendering, UI integration, the benchmark, and infrastructure
+- The Lua bridge + spatial-hash collision add ~**940** lines of C
+- The rest: rendering, UI integration, and infrastructure
 - Third-party `clay.h` (~4,500 lines) is vendored and not counted above
 
 ## Project layout
@@ -182,10 +237,14 @@ src/
   init_*.c                  SDL, Clay and ECS initialization
   ecs*.c                    ECS API, manager, storage, containers, worker pool
   components.c / systems.c  game components and systems
-  benchmark.c               interactive ECS stress benchmark
+  script.c                  Lua scripting layer (API, prefabs, hot reload)
+  collision.c               spatial-hash collision broad-phase
   ui.c / clay_renderer.c    Clay UI and its SDL3 backend
   logger.c                  leveled logger
   clay.h                    vendored Clay library
+scripts/
+  invaders.lua              Space Invaders demo (PLAY)
+  benchmark.lua             adaptive ECS stress benchmark (BENCHMARK)
 ```
 
 ## Acknowledgements
@@ -194,6 +253,11 @@ src/
   reference for the ECS architecture.
 - [**nicbarker/clay**](https://github.com/nicbarker/clay) — the immediate-mode
   UI layout library used for menus and the HUD (vendored as `src/clay.h`).
+- [**Lua**](https://www.lua.org/) — the embedded scripting language for game
+  logic.
+- [**Liberation Sans**](https://github.com/liberationfonts/liberation-fonts) — a
+  free (SIL OFL) Helvetica/Arial-metric font with Cyrillic coverage, bundled
+  under `assets/fonts/` (see its `LICENSE`).
 
 ## License
 
