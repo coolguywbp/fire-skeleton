@@ -132,6 +132,32 @@ state is built and swapped in *only if it loads cleanly* — a syntax error leav
 the running game untouched. Edit a `.lua`, save, and the scene rebuilds with no
 recompile.
 
+### UI: immediate-mode toolkit + declarative layouts
+
+The interface is drawn from Lua. At the bottom is an **immediate-mode toolkit**
+(`src/ui_lua.c`, the `ui` table — `ui.panel` / `ui.label` / `ui.button` /
+`ui.text` / `ui.rect` / `ui.image`) that emits Clay elements directly, with
+CSS-like options (per-side padding, `grow` / `fit` / percent sizing, borders,
+colors).
+
+On top of it sits a tiny **declarative view runtime**: a scene's structure and
+styling live in a layout file as a node tree plus a stylesheet (the "HTML + CSS"),
+while the scene file keeps only behavior (the "JS"). `mount(spec)` turns a
+layout into a view, `view:on(id, fn)` binds a button to an action, and
+`view:render()` walks the tree each frame through the `ui.*` toolkit:
+
+```lua
+-- scripts/menu_view.lua  — structure + style in one file
+local styles = { item = { size = 54, height = "grow", align = "left" }, ... }
+return { menu = { styles = styles, tree = {
+  { tag = "list", class = "list", children = {
+    { tag = "button", id = "play", class = "item", text = "PLAY" }, ... } } } } }
+
+-- scripts/menu.lua  — behavior only
+local L = require("menu_view")
+mount(L.menu):on("play", function() goto_scene("play") end)
+```
+
 ## Benchmark
 
 Selecting **BENCHMARK** runs an interactive ECS stress benchmark
