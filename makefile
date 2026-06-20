@@ -1,6 +1,6 @@
 TARGET = game
 BUILD_DIR		= .build
-SRC_DIR = src
+SRC_DIR = core
 CC = gcc
 
 CFLAGS_BASE		= -std=c11

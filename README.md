@@ -1,7 +1,7 @@
-<h1 align="center">Fire Skeleton Invader</h1>
+<h1 align="center">Fire Skeleton</h1>
 
 <p align="center">
-  <img src="assets/images/MenuFireSkeleton.png" alt="Fire Skeleton Invader — 2D game engine logo" width="150">
+  <img src="assets/images/MenuFireSkeleton.png" alt="Fire Skeleton — 2D game engine logo" width="150">
 </p>
 
 <p align="center">
@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://coolguywbp.github.io/fire-skeleton-invader/"><b>▶ Play the live demo in your browser</b></a>
+  <a href="https://coolguywbp.github.io/fire-skeleton/"><b>▶ Play the live demo in your browser</b></a>
   &nbsp;·&nbsp; no install, no plugins
 </p>
 
@@ -32,17 +32,18 @@
 
 ---
 
-**Fire Skeleton Invader** is a lightweight, high-performance **2D game engine
-written from scratch in C11**. It pairs a **data-oriented Entity Component System
-(ECS)** — built for cache locality and multithreaded simulation of *tens of
-thousands of entities* — with an embedded **Lua** scripting layer for gameplay.
-You write the hot path in fast C and the rules in flexible Lua, render with
-**SDL3**, and ship a single small binary to **Linux, Windows, or the web
-(WebAssembly)** from one codebase.
+**Fire Skeleton** is a lightweight, high-performance **2D game engine in C11**,
+built as an **educational project** — a study in data-oriented design and
+high-performance C. It pairs a **data-oriented Entity Component System (ECS)** —
+built for cache locality and multithreaded simulation of *tens of thousands of
+entities* — with an embedded **Lua** scripting layer for gameplay. You write the
+hot path in fast C and the rules in flexible Lua, render with **SDL3**, and ship
+a single small binary to **Linux, Windows, or the web (WebAssembly)** from one
+codebase.
 
-It's a from-scratch engine: the ECS, every container it relies on, the worker
-pool, the collision broad-phase and the logger are all hand-written. The only
-things underneath are SDL3 (windowing/input/rendering), Lua (scripting) and
+The ECS, every container it relies on, the worker pool, the collision
+broad-phase and the logger are custom-built. The only things underneath are
+SDL3 (windowing/input/rendering), Lua (scripting) and
 [Clay](https://github.com/nicbarker/clay) (UI layout).
 
 ## Why this engine
@@ -51,9 +52,9 @@ things underneath are SDL3 (windowing/input/rendering), Lua (scripting) and
   storage** — contiguous arrays, O(1) lookups, no pointer chasing — streamed by a
   **barrier-based multithreaded worker pool**. Simulates *and* renders tens of
   thousands of independent sprites in real time.
-- 🪶 **Minimal & dependency-light.** ~7.4k lines of hand-written C, no heavy
-  framework. The engine core, hashtables, dynamic arrays, memory pool, thread
-  pool and logger are all written from scratch.
+- 🪶 **Minimal & dependency-light.** ~7.4k lines of C, no heavy framework. The
+  engine core, hashtables, dynamic arrays, memory pool, thread pool and logger
+  are all custom-built.
 - 🌙 **Lua-scriptable gameplay.** Prefabs, spawning, coroutine-driven wave
   directors, and event callbacks — with **hot reload**. *Script the rules, not
   the inner loop:* heavy per-frame work stays in C, Lua only steers.
@@ -71,7 +72,7 @@ things underneath are SDL3 (windowing/input/rendering), Lua (scripting) and
 ## Quick start
 
 **Try it now — no install:** [**play the WebAssembly build in your
-browser**](https://coolguywbp.github.io/fire-skeleton-invader/).
+browser**](https://coolguywbp.github.io/fire-skeleton/).
 
 **Build it natively** (Linux + GCC; needs `gcc`, `make`, `pkg-config` and dev
 packages for SDL3, SDL3_image, SDL3_ttf, zlib and Lua 5.4):
@@ -101,13 +102,13 @@ A from-scratch ECS, its design inspired by
   across the worker pool, while keeping renderer-touching systems on the main
   thread.
 
-It is backed by purpose-built containers (`src/ecs_*.c`): hashtables, a **dense
+It is backed by purpose-built containers (`core/ecs_*.c`): hashtables, a **dense
 sparse-set component pool** (contiguous data, O(1) lookups), dynamic arrays, a
 memory pool, and a **barrier-based thread pool**.
 
 The game layer is a classic `events → update → render` loop. Scenes are Lua
 scripts loaded on demand; each frame the active script emits its UI through the
-toolkit, Clay lays it out, and an SDL3 backend (`src/clay_renderer.c`) draws it.
+toolkit, Clay lays it out, and an SDL3 backend (`core/clay_renderer.c`) draws it.
 
 ### Why it's fast
 
@@ -194,6 +195,22 @@ mount(require("menu_view").menu):on("play", function() goto_scene("play") end)
 
 One source tree, three targets.
 
+### Linux (native, GCC)
+
+Requires `gcc`, `make`, `pkg-config` and the dev packages for SDL3, SDL3_image,
+SDL3_ttf, zlib and Lua 5.4. On Arch, for example:
+
+```sh
+sudo pacman -S --needed base-devel sdl3 sdl3_image sdl3_ttf zlib lua
+```
+
+```sh
+make            # optimized release build (-O3 -march=native -flto) -> ./game
+make run        # build and run
+make debug      # AddressSanitizer + LeakSanitizer build
+make clean
+```
+
 ### Windows (`.exe`, cross-compiled with MinGW-w64)
 
 The Windows SDL3 stack, Lua 5.4 and zlib are vendored under `vendor/`, so it
@@ -211,11 +228,11 @@ winpthreads are linked statically, so only the SDL DLLs ship alongside the exe.
 
 ### WebAssembly (Emscripten)
 
-A live build is published to GitHub Pages on every push to `main`: **[play it in
-your browser](https://coolguywbp.github.io/fire-skeleton-invader/)**. The wasm
-SDL3 stack and a Lua static lib are vendored, and `assets/` + `scripts/` are
-baked into the virtual filesystem, so `git clone` + `make web` works out of the
-box (needs the [Emscripten SDK](https://emscripten.org/)).
+A live build is hosted on GitHub Pages: **[play it in your
+browser](https://coolguywbp.github.io/fire-skeleton/)**. The wasm SDL3 stack and
+a Lua static lib are vendored, and `assets/` + `scripts/` are baked into the
+virtual filesystem, so `git clone` + `make web` works out of the box (needs the
+[Emscripten SDK](https://emscripten.org/)).
 
 ```sh
 make web                                 # -> web/game.{html,js,wasm,data}
@@ -230,18 +247,18 @@ minimal custom canvas shell.
 
 Small on purpose — minimal is a feature.
 
-- ~**7,400** lines of hand-written C across **71 files**, plus ~**290** lines of
-  Lua game logic.
+- ~**7,400** lines of C across **71 files**, plus ~**290** lines of Lua game
+  logic.
 - ~**40%** of the C is the engine itself: the ECS plus its data structures
   (~2,500 lines — core, hashtables/arrays, the dense component pool, the thread
   pool). The Lua bridge + spatial-hash collision add ~**940** lines.
 - The only vendored third-party C is [Clay](https://github.com/nicbarker/clay)
-  (`src/clay.h`), the UI layout library.
+  (`core/clay.h`), the UI layout library.
 
 ## Project layout
 
 ```
-src/
+core/
   game.c / main.c           game loop, lifecycle, scenes
   init_*.c                  SDL, Clay and ECS initialization
   ecs*.c                    ECS API, manager, storage, containers, worker pool
@@ -267,7 +284,7 @@ updates, a spatial grid for cursor repulsion, and off-screen culling.
 - [**sturnclaw/ecs-c**](https://github.com/sturnclaw/ecs-c) — inspiration and
   reference for the ECS architecture.
 - [**nicbarker/clay**](https://github.com/nicbarker/clay) — the immediate-mode
-  UI layout library (vendored as `src/clay.h`).
+  UI layout library (vendored as `core/clay.h`).
 - [**Lua**](https://www.lua.org/) — the embedded scripting language.
 - [**SDL3**](https://www.libsdl.org/) — windowing, input and rendering.
 - [**Liberation Sans**](https://github.com/liberationfonts/liberation-fonts) — a
@@ -276,7 +293,7 @@ updates, a spatial grid for cursor repulsion, and off-screen culling.
 ## License
 
 Released under the [MIT License](LICENSE) — permissive and compatible with the
-dependencies (SDL3 and Clay are zlib-licensed). `src/clay.h` remains under its
+dependencies (SDL3 and Clay are zlib-licensed). `core/clay.h` remains under its
 own license.
 
 ---
