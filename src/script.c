@@ -75,6 +75,13 @@ static Script *get_script(lua_State *L) {
   return *(Script **)lua_getextraspace(L);
 }
 
+// Public accessor for other modules' Lua C functions (e.g. ui_lua.c) to reach
+// the Game behind a lua_State.
+struct Game *script_game(lua_State *L) {
+  Script *s = *(Script **)lua_getextraspace(L);
+  return s ? s->G : NULL;
+}
+
 // strdup is POSIX, not in -std=c11; provide a local equivalent.
 static char *str_dup(const char *s) {
   size_t n = strlen(s) + 1;
@@ -439,6 +446,43 @@ static int l_key_down(lua_State *L) {
   return 1;
 }
 
+// time() -> seconds since start (for animations).
+static int l_time(lua_State *L) {
+  lua_pushnumber(L, (lua_Number)SDL_GetTicks() / 1000.0);
+  return 1;
+}
+
+// scene() -> "menu" | "options" | "play" | "benchmark"
+static int l_scene(lua_State *L) {
+  struct Game *G = get_script(L)->G;
+  const char *n = "menu";
+  switch (G->state->sceneId) {
+    case SCENE_MAIN_MENU_OPTIONS: n = "options"; break;
+    case SCENE_LEVEL: n = (G->state->mode == MODE_BENCHMARK) ? "benchmark" : "play"; break;
+    default: n = "menu"; break;
+  }
+  lua_pushstring(L, n);
+  return 1;
+}
+
+// goto_scene(name) -- navigate. name: "menu"|"options"|"play"|"benchmark"
+static int l_goto_scene(lua_State *L) {
+  struct Game *G = get_script(L)->G;
+  const char *name = luaL_checkstring(L, 1);
+  if      (!strcmp(name, "menu"))      G->state->sceneId = SCENE_MAIN_MENU;
+  else if (!strcmp(name, "options"))   G->state->sceneId = SCENE_MAIN_MENU_OPTIONS;
+  else if (!strcmp(name, "play"))      { G->state->mode = MODE_INVADERS;  G->state->sceneId = SCENE_LEVEL; }
+  else if (!strcmp(name, "benchmark")) { G->state->mode = MODE_BENCHMARK; G->state->sceneId = SCENE_LEVEL; }
+  else return luaL_error(L, "goto_scene: unknown scene '%s'", name);
+  return 0;
+}
+
+// quit() -- exit the game.
+static int l_quit(lua_State *L) {
+  get_script(L)->G->is_running = false;
+  return 0;
+}
+
 static void register_api(lua_State *L) {
   static const luaL_Reg fns[] = {
     {"log",        l_log},
@@ -454,6 +498,10 @@ static void register_api(lua_State *L) {
     {"key_down",   l_key_down},
     {"fps",        l_fps},
     {"hud",        l_hud},
+    {"time",       l_time},
+    {"scene",      l_scene},
+    {"goto_scene", l_goto_scene},
+    {"quit",       l_quit},
     {NULL, NULL}
   };
   for (const luaL_Reg *r = fns; r->name; r++) {

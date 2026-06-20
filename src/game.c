@@ -287,15 +287,24 @@ static void dispatch_key_to_script(struct Game *G, SDL_Scancode sc) {
 }
 
 void game_update(struct Game *G) {
-  // In the level, ensure this scene's gameplay script is loaded, then drive its
-  // per-frame logic. Leaving the level unloads it and clears the HUD.
-  if (G->state->sceneId == SCENE_LEVEL) {
-    const char *want = (G->state->mode == MODE_BENCHMARK)
-                         ? "scripts/benchmark.lua"
-                         : "scripts/invaders.lua";
+  // Each scene is driven by a Lua script (menus and gameplay alike). Load the
+  // one this scene wants, then run its per-frame logic.
+  const char *want = NULL;
+  switch (G->state->sceneId) {
+    case SCENE_MAIN_MENU:
+    case SCENE_MAIN_MENU_OPTIONS:
+      want = "scripts/menu.lua";
+      break;
+    case SCENE_LEVEL:
+      want = (G->state->mode == MODE_BENCHMARK) ? "scripts/benchmark.lua"
+                                                : "scripts/invaders.lua";
+      break;
+    default:
+      break;
+  }
+  if (want) {
     const char *cur = script_current_path(G);
     if (!cur || strcmp(cur, want) != 0) script_load(G, want);
-    // Game-level scripted logic: runs once per frame, never per entity.
     script_update(G, G->dtime);
   } else if (script_current_path(G)) {
     script_unload(G);

@@ -7,6 +7,10 @@
 #include "ecs_core.h"   // Entity
 
 struct Game;
+struct lua_State;
+
+// The Game behind a lua_State (for other modules' Lua C functions, e.g. ui_lua).
+struct Game *script_game(struct lua_State *L);
 
 // The Lua scripting layer.
 //

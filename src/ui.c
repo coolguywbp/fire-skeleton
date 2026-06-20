@@ -8,198 +8,35 @@
 #include <math.h>
 #include <stdio.h>
 
-void ui_main_menu(struct Game *G, Clay_Sizing *claySize);
-void ui_options_menu(struct Game *G, Clay_Sizing *claySize);
-void ui_level(struct Game *G, Clay_Sizing *claySize);
-
 void ui_fps(float frameRate);
 void ui_object_count(struct Game *G);
 void ui_hud(struct Game *G);
 
-
 Clay_String ToClayString(char* string);
 
+// Menu/HUD clicks are handled in Lua now (ui.button); the C side only forwards
+// the press via ui_lua_note_click() in game_events, so this is a no-op.
 void ui_click_events(struct Game *G){
-  if (Clay_PointerOver(Clay_GetElementId(ToClayString("PlayButton")))){
-    G->state->mode = MODE_INVADERS;
-    G->state->sceneId = SCENE_LEVEL;
-  }
-  if (Clay_PointerOver(Clay_GetElementId(ToClayString("BenchmarkButton")))){
-    G->state->mode = MODE_BENCHMARK;
-    G->state->sceneId = SCENE_LEVEL;
-  }
-  if (Clay_PointerOver(Clay_GetElementId(ToClayString("OptionsButton")))){
-    G->state->sceneId = SCENE_MAIN_MENU_OPTIONS;
-  }
-  if (Clay_PointerOver(Clay_GetElementId(ToClayString("BackToMainMenuButton")))){
-    G->state->sceneId = SCENE_MAIN_MENU;
-  }
-  if (Clay_PointerOver(Clay_GetElementId(ToClayString("ExitButton")))){
-    G->is_running = false;
-  }
+  (void)G;
 }
 
 bool ui_create_layout(struct Game *G) {
-  Clay_Sizing layoutExpand = {.width = CLAY_SIZING_GROW(0),
-                              .height = CLAY_SIZING_GROW(0)};
-
-  switch (G->state->sceneId){
-  case SCENE_MAIN_MENU:
-    ui_main_menu(G, &layoutExpand);
-    break;
-  case SCENE_MAIN_MENU_OPTIONS:
-    ui_options_menu(G, &layoutExpand);
-    break;
-  case SCENE_LEVEL:
-    ui_level(G, &layoutExpand);
-    break;
-  default:
-    ui_main_menu(G, &layoutExpand);
-    break;
-  }
+  // Every scene draws its UI from its Lua script (menus and gameplay alike)
+  // via on_ui() and the `ui` toolkit.
+  script_on_ui(G);
 
   #ifdef SHOW_FPS
   ui_fps(G->frameRate);
   #endif /* ifdef SHOW_FPS */
 
-  // Object counter and benchmark status: only shown in the level, not the menus.
+  // Live object count + scripted status line: only in the level.
   if (G->state->sceneId == SCENE_LEVEL) {
     ui_object_count(G);
     ui_hud(G);
-    script_on_ui(G);   // script-drawn UI (ui.* immediate-mode toolkit)
   }
-  
+
   return true;
 };
-
-
-
-
-void ui_level(struct Game *G, Clay_Sizing *claySize){
-
-}
-
-
-void ui_options_menu(struct Game *G, Clay_Sizing *claySize){
-  MenuItem *menuItems[] = {
-    &(MenuItem){.caption = "AUDIO", .id = "AudioButton"},
-    &(MenuItem){.caption = "VIDEO", .id = "VideoButton"},
-    &(MenuItem){.caption = "BACK", .id = "BackToMainMenuButton"}
-  };
-  CLAY(CLAY_ID("OuterContainer"),{
-       .layout = {
-        .layoutDirection = CLAY_TOP_TO_BOTTOM,
-        .sizing = *claySize,
-        .padding = {.bottom=200, .top=200, .left=100, .right=100},
-        .childGap = 96
-       },
-       .backgroundColor = {0,0,0,255}
-  }){
-      CLAY(CLAY_ID("MenuItems"), {
-          .layout = { 
-            .layoutDirection = CLAY_TOP_TO_BOTTOM,
-            .sizing = { .width = CLAY_SIZING_FIXED(300),
-            .height = CLAY_SIZING_GROW(0) },
-            .padding = CLAY_PADDING_ALL(16),
-            .childGap = 16 },
-      }) {
-          for (int i = 0; i < 3; i++) {
-            
-            MenuItem *item = menuItems[i];
-
-            CLAY(CLAY_SID(ToClayString(item->id)), {
-              .layout = {
-                .sizing = CLAY_SIZING_GROW(1)
-              }
-            }){
-
-              CLAY_TEXT(ToClayString(item->caption),CLAY_TEXT_CONFIG({
-                .fontSize = 54,
-                .textColor = {255, 255, 255, 255},
-                .fontId = Clay_Hovered() ? 1 : 0
-                })
-              );
-              };
-          }
-      }
-
-    }
-
-
-}
-void ui_main_menu(struct Game *G, Clay_Sizing *claySize){
-
-  MenuItem *menuItems[] = {
-    &(MenuItem){.caption = "PLAY", .id = "PlayButton"},
-    &(MenuItem){.caption = "BENCHMARK", .id = "BenchmarkButton"},
-    &(MenuItem){.caption = "OPTIONS", .id = "OptionsButton"},
-    &(MenuItem){.caption = "EXIT", .id = "ExitButton"}
-  };
-  const int menuItemCount = 4;
-  CLAY(CLAY_ID("OuterContainer"),{
-       .layout = {
-        .layoutDirection = CLAY_TOP_TO_BOTTOM,
-        .sizing = *claySize,
-        .padding = {.bottom=200, .top=200, .left=100, .right=100},
-        .childGap = 164
-       },
-       .backgroundColor = {0,0,0,255}
-  }){
-    CLAY(CLAY_ID("TitleContainer"), {
-      .layout = {
-         .sizing = CLAY_SIZING_GROW(0)
-      }})
-      {
-      CLAY_TEXT(
-        CLAY_STRING("FIRE SKELETON INVADER"),CLAY_TEXT_CONFIG({
-        .fontSize = 130,
-        .lineHeight = 120,
-        .textColor = {255, 255, 255, 255},
-        .fontId = 1
-        }));
-      };
-    
-    CLAY(CLAY_ID("MenuItems"), {
-          .layout = { 
-            .layoutDirection = CLAY_TOP_TO_BOTTOM,
-            .sizing = { .width = CLAY_SIZING_FIXED(300),
-            .height = CLAY_SIZING_GROW(0) },
-            .padding = CLAY_PADDING_ALL(16),
-            .childGap = 16 },
-      }) {
-          for (int i = 0; i < menuItemCount; i++) {
-
-            MenuItem *item = menuItems[i];
-
-            CLAY(CLAY_SID(ToClayString(item->id)), {
-              .layout = {
-                .sizing = CLAY_SIZING_GROW(1)
-              }
-            }){
-
-              CLAY_TEXT(ToClayString(item->caption),CLAY_TEXT_CONFIG({
-                .fontSize = 54,
-                .textColor = {255, 255, 255, 255},
-                .fontId = Clay_Hovered() ? 1 : 0
-                })
-              );
-              };
-          }
-      }
-    //FIRE SKULL ANIMATION
-    float offset, amplitude, speed;
-    amplitude = 50;
-    speed = 500.;
-    offset = sin(SDL_GetTicks() / speed) * amplitude;
-
-    CLAY(CLAY_ID("MenuFireSkeleton"), {    
-    .floating = {.offset={.x=-100, .y=150 + offset}, .attachTo=CLAY_ATTACH_TO_PARENT, .zIndex = 99, .attachPoints = { .element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP }},
-    .layout = {.sizing = {.width = CLAY_SIZING_FIXED(450)}},
-    .aspectRatio = {450./644.},
-    .image = G->images[0] }){};
-
-  };
-}
 
 void ui_fps(float frameRate) {
   // Must be static: Clay stores the pointer and only measures the text later,

@@ -1,6 +1,7 @@
 #include "ui_lua.h"
 
-#include "game.h"   // Clay macros/types (via main.h), struct Game
+#include "game.h"    // Clay macros/types (via main.h), struct Game
+#include "script.h"  // script_game (for ui.image -> G->images)
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -110,9 +111,8 @@ static int l_ui_rect(lua_State *L) {
   return 0;
 }
 
-// ui.button(id, x, y, w, h, label [, opts]) -> bool clicked
-static int l_ui_button(lua_State *L) {
-  const char *id = luaL_checkstring(L, 1);
+// Floating (absolute) button: ui.button(id, x, y, w, h, label [, opts]).
+static int ui_button_floating(lua_State *L, const char *id) {
   float x = (float)luaL_checknumber(L, 2);
   float y = (float)luaL_checknumber(L, 3);
   float w = (float)luaL_checknumber(L, 4);
@@ -142,9 +142,152 @@ static int l_ui_button(lua_State *L) {
   }
 
   bool clicked = over && g_click;
-  if (clicked) g_click = false;   // consume so only one button fires per press
+  if (clicked) g_click = false;
   lua_pushboolean(L, clicked);
   return 1;
+}
+
+// In-flow button (inside an ui.panel): ui.button(id, label [, opts]). Text-only
+// by default (bolds on hover, like the classic menu); set opts.color for a box.
+static int ui_button_inflow(lua_State *L, const char *id) {
+  const char *label = intern(luaL_checkstring(L, 2));
+  int opt = lua_istable(L, 3) ? 3 : 0;
+
+  Clay_Color bg  = opt_color(L, opt, "color",      (Clay_Color){0, 0, 0, 0});
+  Clay_Color txt = opt_color(L, opt, "text_color", (Clay_Color){255, 255, 255, 255});
+  uint16_t size  = (uint16_t)opt_num(L, opt, "size", 54);
+  uint16_t font  = (uint16_t)opt_num(L, opt, "font", 0);
+  uint16_t pad   = (uint16_t)opt_num(L, opt, "pad", 8);
+
+  Clay_String cid = clay_str(intern(id));
+  bool over = Clay_PointerOver(Clay_GetElementId(cid));
+
+  Clay_ElementDeclaration d = {0};
+  d.layout.padding = (Clay_Padding){ .left = pad, .right = pad, .top = pad, .bottom = pad };
+  d.layout.childAlignment.x = CLAY_ALIGN_X_CENTER;
+  d.layout.childAlignment.y = CLAY_ALIGN_Y_CENTER;
+  d.backgroundColor = bg;
+  d.cornerRadius = CLAY_CORNER_RADIUS((float)opt_num(L, opt, "radius", 0));
+
+  Clay__OpenElementWithId(Clay_GetElementId(cid));
+  Clay__ConfigureOpenElement(d);
+  Clay_TextElementConfig tc = {0};
+  tc.fontSize = size;
+  tc.textColor = txt;
+  tc.fontId = over ? 1 : font;   // bold on hover
+  Clay__OpenTextElement(clay_str(label), Clay__StoreTextElementConfig(tc));
+  Clay__CloseElement();
+
+  bool clicked = over && g_click;
+  if (clicked) g_click = false;
+  lua_pushboolean(L, clicked);
+  return 1;
+}
+
+// ui.button dispatches by the 2nd argument: a string is the in-flow form, a
+// number is the floating (absolute) form.
+static int l_ui_button(lua_State *L) {
+  const char *id = luaL_checkstring(L, 1);
+  if (lua_type(L, 2) == LUA_TSTRING) return ui_button_inflow(L, id);
+  return ui_button_floating(L, id);
+}
+
+// ---- layout containers (for menus) ----------------------------------------
+
+static Clay_SizingAxis size_axis(lua_State *L, int t, const char *key) {
+  if (t) {
+    lua_getfield(L, t, key);
+    if (lua_isnumber(L, -1)) { float v = (float)lua_tonumber(L, -1); lua_pop(L, 1); return CLAY_SIZING_FIXED(v); }
+    if (lua_isstring(L, -1)) {
+      const char *s = lua_tostring(L, -1); lua_pop(L, 1);
+      if (!strcmp(s, "grow")) return CLAY_SIZING_GROW(0);
+      return CLAY_SIZING_FIT(0);
+    }
+    lua_pop(L, 1);
+  }
+  return CLAY_SIZING_FIT(0);
+}
+
+static const char *opt_str(lua_State *L, int t, const char *key, const char *def) {
+  if (!t) return def;
+  lua_getfield(L, t, key);
+  const char *v = lua_isstring(L, -1) ? lua_tostring(L, -1) : def;
+  lua_pop(L, 1);
+  return v;
+}
+
+// ui.panel(opts, fn) -- a layout container; fn emits its children.
+//   opts: dir="row"|"column", align_x/align_y="left|center|right"/"top|..",
+//         gap, pad, width/height="grow"|number, color={...}, radius
+static int l_ui_panel(lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+  luaL_checktype(L, 2, LUA_TFUNCTION);
+  int t = 1;
+
+  const char *dir = opt_str(L, t, "dir", "column");
+  const char *ax  = opt_str(L, t, "align_x", "left");
+  const char *ay  = opt_str(L, t, "align_y", "top");
+  uint16_t gap = (uint16_t)opt_num(L, t, "gap", 0);
+  uint16_t pad = (uint16_t)opt_num(L, t, "pad", 0);
+
+  Clay_ElementDeclaration d = {0};
+  d.layout.layoutDirection = !strcmp(dir, "row") ? CLAY_LEFT_TO_RIGHT : CLAY_TOP_TO_BOTTOM;
+  d.layout.childGap = gap;
+  d.layout.padding = (Clay_Padding){ .left = pad, .right = pad, .top = pad, .bottom = pad };
+  d.layout.childAlignment.x = !strcmp(ax, "center") ? CLAY_ALIGN_X_CENTER
+                            : !strcmp(ax, "right")  ? CLAY_ALIGN_X_RIGHT : CLAY_ALIGN_X_LEFT;
+  d.layout.childAlignment.y = !strcmp(ay, "center") ? CLAY_ALIGN_Y_CENTER
+                            : !strcmp(ay, "bottom") ? CLAY_ALIGN_Y_BOTTOM : CLAY_ALIGN_Y_TOP;
+  d.layout.sizing.width  = size_axis(L, t, "width");
+  d.layout.sizing.height = size_axis(L, t, "height");
+  d.backgroundColor = opt_color(L, t, "color", (Clay_Color){0, 0, 0, 0});
+  d.cornerRadius = CLAY_CORNER_RADIUS((float)opt_num(L, t, "radius", 0));
+
+  Clay__OpenElement();
+  Clay__ConfigureOpenElement(d);
+  lua_pushvalue(L, 2);
+  lua_call(L, 0, 0);          // emit children
+  Clay__CloseElement();
+  return 0;
+}
+
+// ui.label(text [, opts]) -- in-flow text (inside a panel).
+static int l_ui_label(lua_State *L) {
+  const char *str = intern(luaL_checkstring(L, 1));
+  int opt = lua_istable(L, 2) ? 2 : 0;
+  Clay_TextElementConfig tc = {0};
+  tc.fontSize  = (uint16_t)opt_num(L, opt, "size", 24);
+  tc.textColor = opt_color(L, opt, "color", (Clay_Color){255, 255, 255, 255});
+  tc.fontId    = (uint16_t)opt_num(L, opt, "font", 0);
+  Clay__OpenTextElement(clay_str(str), Clay__StoreTextElementConfig(tc));
+  return 0;
+}
+
+// ui.image(imageId, x, y, w, h) -- floating image overlay.
+static int l_ui_image(lua_State *L) {
+  int id = (int)luaL_checkinteger(L, 1);
+  float x = (float)luaL_checknumber(L, 2);
+  float y = (float)luaL_checknumber(L, 3);
+  float w = (float)luaL_checknumber(L, 4);
+  float h = (float)luaL_checknumber(L, 5);
+
+  struct Game *G = script_game(L);
+  if (!G || !G->images) return 0;
+
+  Clay_ElementDeclaration d = {0};
+  d.floating.attachTo = CLAY_ATTACH_TO_ROOT;
+  d.floating.offset = (Clay_Vector2){ x, y };
+  d.floating.zIndex = 750;
+  d.floating.attachPoints.element = CLAY_ATTACH_POINT_LEFT_TOP;
+  d.floating.attachPoints.parent  = CLAY_ATTACH_POINT_LEFT_TOP;
+  d.layout.sizing.width  = CLAY_SIZING_FIXED(w);
+  d.layout.sizing.height = CLAY_SIZING_FIXED(h);
+  d.image.imageData = G->images[id];
+
+  Clay__OpenElement();
+  Clay__ConfigureOpenElement(d);
+  Clay__CloseElement();
+  return 0;
 }
 
 void ui_lua_register(lua_State *L) {
@@ -152,6 +295,9 @@ void ui_lua_register(lua_State *L) {
     {"text",   l_ui_text},
     {"rect",   l_ui_rect},
     {"button", l_ui_button},
+    {"panel",  l_ui_panel},
+    {"label",  l_ui_label},
+    {"image",  l_ui_image},
     {NULL, NULL}
   };
   luaL_newlib(L, fns);
