@@ -533,6 +533,15 @@ static const char *ENGINE_PRELUDE =
   "function wait(sec)\n"
   "  coroutine.yield(sec or 0)\n"
   "end\n"
+  // style(a, b, ...) -- merge style tables left-to-right (CSS-like cascade):
+  // later tables override earlier keys. Returns a new table.
+  "function style(...)\n"
+  "  local out, args = {}, {...}\n"
+  "  for i = 1, #args do\n"
+  "    if args[i] then for k, v in pairs(args[i]) do out[k] = v end end\n"
+  "  end\n"
+  "  return out\n"
+  "end\n"
   "function start(fn, ...)\n"
   "  local co = coroutine.create(fn)\n"
   "  local ok, res = coroutine.resume(co, ...)\n"       // run first segment now

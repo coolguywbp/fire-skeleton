@@ -7,6 +7,7 @@
 #include <lauxlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>   // atof
 
 // Per-frame bump arena. Clay stores string pointers and only measures/renders
 // them later in the frame, so every string handed to it must outlive the layout
@@ -34,6 +35,10 @@ static const char *intern(const char *s) {
 static Clay_String clay_str(const char *s) {
   return (Clay_String){ false, (int32_t)strlen(s), s };
 }
+
+// Defined further down (layout helpers), used by the in-flow button too.
+static Clay_Padding opt_padding(lua_State *L, int t, const char *key);
+static void apply_border(lua_State *L, int t, Clay_ElementDeclaration *d);
 
 // A unique interned element id for this frame ("ui0", "ui1", ...).
 static Clay_String auto_id(void) {
@@ -157,17 +162,22 @@ static int ui_button_inflow(lua_State *L, const char *id) {
   Clay_Color txt = opt_color(L, opt, "text_color", (Clay_Color){255, 255, 255, 255});
   uint16_t size  = (uint16_t)opt_num(L, opt, "size", 54);
   uint16_t font  = (uint16_t)opt_num(L, opt, "font", 0);
-  uint16_t pad   = (uint16_t)opt_num(L, opt, "pad", 8);
 
   Clay_String cid = clay_str(intern(id));
   bool over = Clay_PointerOver(Clay_GetElementId(cid));
 
+  // Default padding 8 all round; opts.pad overrides (number or per-side table).
+  Clay_Padding pad = (opt == 0) ? (Clay_Padding){ 8, 8, 8, 8 } : opt_padding(L, opt, "pad");
+  if (opt && pad.left == 0 && pad.right == 0 && pad.top == 0 && pad.bottom == 0)
+    pad = (Clay_Padding){ 8, 8, 8, 8 };
+
   Clay_ElementDeclaration d = {0};
-  d.layout.padding = (Clay_Padding){ .left = pad, .right = pad, .top = pad, .bottom = pad };
+  d.layout.padding = pad;
   d.layout.childAlignment.x = CLAY_ALIGN_X_CENTER;
   d.layout.childAlignment.y = CLAY_ALIGN_Y_CENTER;
   d.backgroundColor = bg;
   d.cornerRadius = CLAY_CORNER_RADIUS((float)opt_num(L, opt, "radius", 0));
+  apply_border(L, opt, &d);
 
   Clay__OpenElementWithId(Clay_GetElementId(cid));
   Clay__ConfigureOpenElement(d);
@@ -194,18 +204,21 @@ static int l_ui_button(lua_State *L) {
 
 // ---- layout containers (for menus) ----------------------------------------
 
+// width/height value: a number (fixed px), "grow", "fit", or "NN%" (percent).
 static Clay_SizingAxis size_axis(lua_State *L, int t, const char *key) {
-  if (t) {
-    lua_getfield(L, t, key);
-    if (lua_isnumber(L, -1)) { float v = (float)lua_tonumber(L, -1); lua_pop(L, 1); return CLAY_SIZING_FIXED(v); }
-    if (lua_isstring(L, -1)) {
-      const char *s = lua_tostring(L, -1); lua_pop(L, 1);
-      if (!strcmp(s, "grow")) return CLAY_SIZING_GROW(0);
-      return CLAY_SIZING_FIT(0);
-    }
-    lua_pop(L, 1);
+  if (!t) return CLAY_SIZING_FIT(0);
+  lua_getfield(L, t, key);
+  Clay_SizingAxis ax = CLAY_SIZING_FIT(0);
+  if (lua_isnumber(L, -1)) {
+    ax = CLAY_SIZING_FIXED((float)lua_tonumber(L, -1));
+  } else if (lua_isstring(L, -1)) {
+    const char *s = lua_tostring(L, -1);
+    if (!strcmp(s, "grow"))        ax = CLAY_SIZING_GROW(0);
+    else if (strchr(s, '%'))       ax = CLAY_SIZING_PERCENT((float)atof(s) / 100.0f);
+    else                           ax = CLAY_SIZING_FIT(0);
   }
-  return CLAY_SIZING_FIT(0);
+  lua_pop(L, 1);
+  return ax;
 }
 
 static const char *opt_str(lua_State *L, int t, const char *key, const char *def) {
@@ -214,6 +227,61 @@ static const char *opt_str(lua_State *L, int t, const char *key, const char *def
   const char *v = lua_isstring(L, -1) ? lua_tostring(L, -1) : def;
   lua_pop(L, 1);
   return v;
+}
+
+// Padding: a number (all sides), CSS positional shorthand {a} / {v,h} / {t,h,b}
+// / {t,r,b,l}, or named {top=, right=, bottom=, left=}.
+static Clay_Padding opt_padding(lua_State *L, int t, const char *key) {
+  Clay_Padding p = {0};
+  if (!t) return p;
+  lua_getfield(L, t, key);
+  if (lua_isnumber(L, -1)) {
+    uint16_t a = (uint16_t)lua_tonumber(L, -1);
+    p = (Clay_Padding){ a, a, a, a };
+  } else if (lua_istable(L, -1)) {
+    int tab = lua_gettop(L);
+    bool named = false;
+    const char *names[] = { "top", "right", "bottom", "left" };
+    for (int i = 0; i < 4; i++) {
+      lua_getfield(L, tab, names[i]);
+      if (!lua_isnil(L, -1)) named = true;
+      lua_pop(L, 1);
+    }
+    if (named) {
+      p.top    = (uint16_t)opt_num(L, tab, "top", 0);
+      p.right  = (uint16_t)opt_num(L, tab, "right", 0);
+      p.bottom = (uint16_t)opt_num(L, tab, "bottom", 0);
+      p.left   = (uint16_t)opt_num(L, tab, "left", 0);
+    } else {
+      int n = (int)lua_rawlen(L, tab);
+      double v[4] = {0, 0, 0, 0};
+      for (int i = 0; i < n && i < 4; i++) {
+        lua_rawgeti(L, tab, i + 1);
+        v[i] = lua_tonumber(L, -1);
+        lua_pop(L, 1);
+      }
+      if (n <= 1)      p = (Clay_Padding){ (uint16_t)v[0], (uint16_t)v[0], (uint16_t)v[0], (uint16_t)v[0] };
+      else if (n == 2) p = (Clay_Padding){ .left = (uint16_t)v[1], .right = (uint16_t)v[1], .top = (uint16_t)v[0], .bottom = (uint16_t)v[0] };
+      else if (n == 3) p = (Clay_Padding){ .left = (uint16_t)v[1], .right = (uint16_t)v[1], .top = (uint16_t)v[0], .bottom = (uint16_t)v[2] };
+      else             p = (Clay_Padding){ .left = (uint16_t)v[3], .right = (uint16_t)v[1], .top = (uint16_t)v[0], .bottom = (uint16_t)v[2] };
+    }
+  }
+  lua_pop(L, 1);
+  return p;
+}
+
+// Optional border: opts.border = { width=N, color={r,g,b,a} }.
+static void apply_border(lua_State *L, int t, Clay_ElementDeclaration *d) {
+  if (!t) return;
+  lua_getfield(L, t, "border");
+  if (lua_istable(L, -1)) {
+    int b = lua_gettop(L);
+    uint16_t w = (uint16_t)opt_num(L, b, "width", 0);
+    Clay_Color col = opt_color(L, b, "color", (Clay_Color){255, 255, 255, 255});
+    d->border.width = (Clay_BorderWidth){ .left = w, .right = w, .top = w, .bottom = w };
+    d->border.color = col;
+  }
+  lua_pop(L, 1);
 }
 
 // ui.panel(opts, fn) -- a layout container; fn emits its children.
@@ -227,13 +295,11 @@ static int l_ui_panel(lua_State *L) {
   const char *dir = opt_str(L, t, "dir", "column");
   const char *ax  = opt_str(L, t, "align_x", "left");
   const char *ay  = opt_str(L, t, "align_y", "top");
-  uint16_t gap = (uint16_t)opt_num(L, t, "gap", 0);
-  uint16_t pad = (uint16_t)opt_num(L, t, "pad", 0);
 
   Clay_ElementDeclaration d = {0};
   d.layout.layoutDirection = !strcmp(dir, "row") ? CLAY_LEFT_TO_RIGHT : CLAY_TOP_TO_BOTTOM;
-  d.layout.childGap = gap;
-  d.layout.padding = (Clay_Padding){ .left = pad, .right = pad, .top = pad, .bottom = pad };
+  d.layout.childGap = (uint16_t)opt_num(L, t, "gap", 0);
+  d.layout.padding = opt_padding(L, t, "pad");
   d.layout.childAlignment.x = !strcmp(ax, "center") ? CLAY_ALIGN_X_CENTER
                             : !strcmp(ax, "right")  ? CLAY_ALIGN_X_RIGHT : CLAY_ALIGN_X_LEFT;
   d.layout.childAlignment.y = !strcmp(ay, "center") ? CLAY_ALIGN_Y_CENTER
@@ -242,6 +308,7 @@ static int l_ui_panel(lua_State *L) {
   d.layout.sizing.height = size_axis(L, t, "height");
   d.backgroundColor = opt_color(L, t, "color", (Clay_Color){0, 0, 0, 0});
   d.cornerRadius = CLAY_CORNER_RADIUS((float)opt_num(L, t, "radius", 0));
+  apply_border(L, t, &d);
 
   Clay__OpenElement();
   Clay__ConfigureOpenElement(d);
@@ -256,9 +323,10 @@ static int l_ui_label(lua_State *L) {
   const char *str = intern(luaL_checkstring(L, 1));
   int opt = lua_istable(L, 2) ? 2 : 0;
   Clay_TextElementConfig tc = {0};
-  tc.fontSize  = (uint16_t)opt_num(L, opt, "size", 24);
-  tc.textColor = opt_color(L, opt, "color", (Clay_Color){255, 255, 255, 255});
-  tc.fontId    = (uint16_t)opt_num(L, opt, "font", 0);
+  tc.fontSize   = (uint16_t)opt_num(L, opt, "size", 24);
+  tc.textColor  = opt_color(L, opt, "color", (Clay_Color){255, 255, 255, 255});
+  tc.fontId     = (uint16_t)opt_num(L, opt, "font", 0);
+  tc.lineHeight = (uint16_t)opt_num(L, opt, "line", 0);  // 0 = auto
   Clay__OpenTextElement(clay_str(str), Clay__StoreTextElementConfig(tc));
   return 0;
 }
