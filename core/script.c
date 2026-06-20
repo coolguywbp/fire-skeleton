@@ -704,6 +704,11 @@ static const char *ENGINE_PRELUDE =
   "  elseif tag == 'label' then\n"
   "    ui.label(n.text or '', st)\n"
   "  elseif tag == 'button' then\n"
+  // The keyboard cursor highlights its button by bolding it (font 1), matching
+  // the mouse-hover look so both input methods read the same.
+  "    if self.cursor and self.buttons[self.cursor] == n.id then\n"
+  "      st = merge(st, { font = 1 })\n"
+  "    end\n"
   "    if ui.button(n.id or 'btn', n.text or '', st) then\n"
   "      local fn = n.id and self.handlers[n.id]\n"
   "      if fn then fn() end\n"
@@ -719,8 +724,28 @@ static const char *ENGINE_PRELUDE =
   "function View:render()\n"
   "  for _, n in ipairs(self.tree) do draw(self, n) end\n"
   "end\n"
+  // Keyboard navigation over the view's buttons (collected in tree order at
+  // mount). nav() moves the cursor with wraparound; activate() fires the
+  // handler under the cursor (Enter). Mouse clicks still work independently.
+  "function View:nav(d)\n"
+  "  local n = #self.buttons\n"
+  "  if n == 0 then return end\n"
+  "  self.cursor = (self.cursor - 1 + d) % n + 1\n"
+  "end\n"
+  "function View:activate()\n"
+  "  local id = self.buttons[self.cursor]\n"
+  "  local fn = id and self.handlers[id]\n"
+  "  if fn then fn() end\n"
+  "end\n"
+  "local function collect_buttons(n, out)\n"
+  "  if n.tag == 'button' and n.id then out[#out + 1] = n.id end\n"
+  "  for _, c in ipairs(n.children or {}) do collect_buttons(c, out) end\n"
+  "end\n"
   "function mount(spec)\n"
-  "  return setmetatable({ tree = spec.tree or {}, styles = spec.styles or {}, handlers = {} }, View)\n"
+  "  local self = setmetatable({ tree = spec.tree or {}, styles = spec.styles or {},\n"
+  "    handlers = {}, buttons = {}, cursor = 1 }, View)\n"
+  "  for _, n in ipairs(self.tree) do collect_buttons(n, self.buttons) end\n"
+  "  return self\n"
   "end\n";
 
 // ---------------------------------------------------------------------------

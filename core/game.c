@@ -349,11 +349,21 @@ void mouse_click_events(struct Game *G){
   ui_click_events(G);
 }
 
-// Forward a key press to the script's on_key callback, but only in the level
-// (menus handle their own keys). The SDL key name is lowercased so scripts can
-// compare against friendly names like "space" or "left".
+// Forward a key press to the script's on_key callback. The level uses it for
+// gameplay; the menus use it for keyboard navigation (arrows + Enter). Scenes
+// with no script bound get nothing. The SDL key name is lowercased so scripts
+// can compare against friendly names like "space", "left" or "return".
 static void dispatch_key_to_script(struct Game *G, SDL_Scancode sc) {
-  if (G->state->sceneId != SCENE_LEVEL) return;
+  switch (G->state->sceneId) {
+  case SCENE_LEVEL:
+  case SCENE_MAIN_MENU:
+  case SCENE_MAIN_MENU_OPTIONS:
+  case SCENE_MAIN_MENU_DEMOS:
+  case SCENE_MAIN_MENU_VIDEO:
+    break;            // has a script + on_key
+  default:
+    return;
+  }
   const char *name = SDL_GetScancodeName(sc);
   if (!name || !name[0]) return;
 

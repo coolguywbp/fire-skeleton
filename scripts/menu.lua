@@ -78,16 +78,47 @@ local function skeleton()
   ui.image(0, SCREEN_W - w - 100, 150 + off, w, h)
 end
 
-function on_ui()
+-- Keyboard navigation. The selected item per screen is remembered in `cursor`
+-- (keyed by scene name) and reset to the top whenever we enter a new screen.
+-- The video screen is rebuilt every frame, so its cursor lives here rather than
+-- on the (ephemeral) view object and is applied to each fresh mount.
+local cursor = {}
+local active = nil
+
+local function view_for(s)
+  if s == "options" then return opts
+  elseif s == "video" then return video_view()
+  elseif s == "demos" then return demos
+  else return main end
+end
+
+-- The current screen's view with the remembered cursor applied. Both on_key and
+-- on_ui go through this so they always agree on the selection.
+local function current()
   local s = scene()
-  if s == "options" then
-    opts:render()
-  elseif s == "video" then
-    video_view():render()
-  elseif s == "demos" then
-    demos:render()
+  if s ~= active then cursor[s] = 1; active = s end
+  local v = view_for(s)
+  v.cursor = cursor[s] or 1
+  return v, s
+end
+
+function on_key(key)
+  local v, s = current()
+  if key == "up" then
+    v:nav(-1)
+  elseif key == "down" then
+    v:nav(1)
+  elseif key == "return" or key == "keypad enter" then
+    v:activate()   -- may switch scenes; cursor state for the new one resets above
+    return
   else
-    main:render()
+    return
   end
+  cursor[s] = v.cursor
+end
+
+function on_ui()
+  local v = current()
+  v:render()
   skeleton()   -- the bobbing fire-skeleton appears on every menu screen
 end
