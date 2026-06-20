@@ -40,11 +40,13 @@ local peak
 local prev_n
 local accum_t, accum_f
 local done_t
+local warming   -- skip the first sample window after a reset (load-frame hitch)
 
 local function reset()
   if n and n > 0 then despawn("Bench", n) end
   phase, n, peak, prev_n = "up", 0, 0, 0
   accum_t, accum_f, done_t = 0, 0, 0
+  warming = true
   spawn_many("Bench", 1)   -- start with a single object
   n = 1
 end
@@ -91,6 +93,12 @@ function on_update(dt)
   if accum_t < SAMPLE_SEC then return end
   local smoothed = accum_f / accum_t
   accum_t, accum_f = 0, 0
+
+  -- The first window after a reset spans the scene-load frame (script parse +
+  -- on_start spawn), whose dt is abnormally large and would read as a near-zero
+  -- FPS -- enough to trip the floor and report a bogus instant "peak". Discard
+  -- that first sample and start measuring from a clean window.
+  if warming then warming = false; return end
 
   if phase == "up" then
     hud(string.format("BENCHMARK: ramping up... %d  (%d fps)", n, math.floor(smoothed)))

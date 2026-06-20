@@ -139,7 +139,13 @@ bool game_new(struct Game **game) {
   G->debug = false;
 
   G->frameRate = 0;
+  // Seed BOTH frame timestamps. lastFrameCounter drives dt/frameRate in
+  // update_frame_rate; leaving it at 0 (calloc) made the first frame's dt the
+  // entire perf-counter value -- on the web that's an epoch-based number, i.e.
+  // ~1.8e9 seconds -- which poisoned the first FPS sample (smoothed ~0) and gave
+  // the benchmark a bogus instant "peak" and a garbage on-screen FPS reading.
   G->lastFrameRateUpdate = SDL_GetPerformanceCounter();
+  G->lastFrameCounter = SDL_GetPerformanceCounter();
 
   srand((unsigned)time(NULL));
 
