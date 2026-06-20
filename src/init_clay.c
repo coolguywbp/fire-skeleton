@@ -1,6 +1,7 @@
 #include "init_clay.h"
 #include "ui.h"
 #include "ui_lua.h"
+#include "clay_renderer.h"
 
 void HandleClayErrors(Clay_ErrorData errorData) {
   // See the Clay_ErrorData struct for more information
@@ -13,11 +14,13 @@ void HandleClayErrors(Clay_ErrorData errorData) {
 Clay_Dimensions SDL_MeasureText(Clay_StringSlice text,
                                 Clay_TextElementConfig *config,
                                 void *userData) {
-  TTF_Font **fonts = userData;
-  TTF_Font *font = fonts[config->fontId];
+  Clay_SDL3RendererData *rendererData = userData;
+  // Use the same per-size font handle as the renderer, so measuring never
+  // resizes a shared font (which would flush the glyph atlas every layout).
+  TTF_Font *font =
+      SDL_Clay_GetSizedFont(rendererData, config->fontId, config->fontSize);
   int width, height;
 
-  TTF_SetFontSize(font, config->fontSize);
   if (!TTF_GetStringSize(font, text.chars, text.length, &width, &height)) {
     SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to measure text: %s",
                  SDL_GetError());
@@ -50,7 +53,7 @@ bool ui_init_clay(struct Game *G) {
     fprintf(stderr, "Error initializing Clay UI: %s\n", SDL_GetError());
     return false;
   };
-  Clay_SetMeasureTextFunction(SDL_MeasureText, G->clayRendererData->fonts);
+  Clay_SetMeasureTextFunction(SDL_MeasureText, G->clayRendererData);
 
   G->ui = ui;
 

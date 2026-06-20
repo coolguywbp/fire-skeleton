@@ -15,6 +15,9 @@ typedef struct {
   SDL_Renderer *renderer;
   TTF_TextEngine *textEngine;
   TTF_Font **fonts;
+  // Font file paths by fontId, so the renderer can open a dedicated handle per
+  // (fontId, size) instead of resizing a shared font every frame.
+  const char **font_paths;
 } Clay_SDL3RendererData;
 
 typedef struct{

@@ -67,6 +67,7 @@ bool game_init_sdl(struct Game *G) {
   G->clayRendererData->renderer = G->renderer;
   G->clayRendererData->textEngine = G->textEngine;
   G->clayRendererData->fonts = load_fonts(G);
+  G->clayRendererData->font_paths = load_font_paths();
   if (!G->clayRendererData) {
     fprintf(stderr, "Error creating ClayRendererData: %s", SDL_GetError());
     return false;

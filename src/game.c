@@ -141,6 +141,9 @@ void game_free(struct Game **game) {
 
     // Clay/TTF renderer resources. (font count must match load_fonts())
     if (G->clayRendererData) {
+      // Free cached TTF_Text + per-size fonts while the text engine and base
+      // fonts are still alive.
+      SDL_Clay_RenderShutdown();
       if (G->clayRendererData->fonts) {
         for (int i = 0; i < 2; i++)
           if (G->clayRendererData->fonts[i]) TTF_CloseFont(G->clayRendererData->fonts[i]);

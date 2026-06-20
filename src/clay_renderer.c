@@ -1,9 +1,97 @@
 #include "clay_renderer.h"
 
+#include <stdint.h>
+#include <string.h>
+
 /* Global for convenience. Even in 4K this is enough for smooth curves (low
  * radius or rect size coupled with no AA or low resolution might make it appear
  * as jagged curves) */
 static int NUM_CIRCLE_SEGMENTS = 16;
+
+// ---------------------------------------------------------------------------
+// Text caching
+//
+// The naive text path re-rasterizes every string every frame (TTF_CreateText +
+// TTF_DestroyText) and rescales a shared font with TTF_SetFontSize, which
+// flushes the glyph atlas. Native CPUs absorb this; single-threaded WebAssembly
+// does not, and it dominates the frame. Two caches remove the cost:
+//
+//  * sized fonts: one TTF_Font per (fontId, size), opened once from the font
+//    file, so a font is never resized after warm-up (the atlas stays warm).
+//    Shared by the renderer and the Clay measure callback.
+//  * rendered text: TTF_Text objects keyed by (fontId, size, string), created
+//    once and redrawn each frame. A per-frame mark-and-sweep frees entries that
+//    stop appearing (e.g. a stale FPS value).
+// ---------------------------------------------------------------------------
+
+typedef struct {
+  int       fontId;
+  float     size;
+  TTF_Font *font;
+  bool      owned;   // opened here (close on shutdown) vs aliased base font
+} SizedFont;
+
+static SizedFont g_sized_fonts[64];
+static int       g_sized_font_count;
+
+TTF_Font *SDL_Clay_GetSizedFont(Clay_SDL3RendererData *r, int fontId,
+                                float size) {
+  for (int i = 0; i < g_sized_font_count; i++)
+    if (g_sized_fonts[i].fontId == fontId && g_sized_fonts[i].size == size)
+      return g_sized_fonts[i].font;
+
+  // Miss: open a dedicated handle at this size from the same file.
+  TTF_Font *font = NULL;
+  bool owned = false;
+  if (r->font_paths && r->font_paths[fontId]) {
+    font = TTF_OpenFont(r->font_paths[fontId], size);
+    owned = (font != NULL);
+  }
+  if (!font) {                       // last resort: resize the base handle
+    font = r->fonts[fontId];
+    TTF_SetFontSize(font, size);
+  }
+  if (g_sized_font_count < 64)
+    g_sized_fonts[g_sized_font_count++] =
+        (SizedFont){fontId, size, font, owned};
+  return font;
+}
+
+typedef struct {
+  uint64_t  key;
+  TTF_Text *text;
+  uint32_t  touched;   // frame index this entry was last drawn
+  bool      used;
+} TextEntry;
+
+#define TEXT_CACHE_CAP 256
+static TextEntry g_text_cache[TEXT_CACHE_CAP];
+static uint32_t  g_frame;
+
+static uint64_t text_key(int fontId, float size, const char *s, size_t n) {
+  uint64_t h = 1469598103934665603ULL;            // FNV-1a, 64-bit
+  h = (h ^ (uint8_t)fontId) * 1099511628211ULL;
+  uint32_t sb;
+  memcpy(&sb, &size, sizeof sb);
+  for (int i = 0; i < 4; i++)
+    h = (h ^ ((sb >> (i * 8)) & 0xff)) * 1099511628211ULL;
+  for (size_t i = 0; i < n; i++)
+    h = (h ^ (uint8_t)s[i]) * 1099511628211ULL;
+  return h;
+}
+
+void SDL_Clay_RenderShutdown(void) {
+  for (int k = 0; k < TEXT_CACHE_CAP; k++)
+    if (g_text_cache[k].used && g_text_cache[k].text) {
+      TTF_DestroyText(g_text_cache[k].text);
+      g_text_cache[k].text = NULL;
+      g_text_cache[k].used = false;
+    }
+  for (int i = 0; i < g_sized_font_count; i++)
+    if (g_sized_fonts[i].owned && g_sized_fonts[i].font)
+      TTF_CloseFont(g_sized_fonts[i].font);
+  g_sized_font_count = 0;
+}
 
 // all rendering is performed by a single SDL call, avoiding multiple RenderRect
 // + plumbing choice for circles.
@@ -203,6 +291,7 @@ SDL_Rect currentClippingRectangle;
 
 void SDL_Clay_RenderClayCommands(Clay_SDL3RendererData *rendererData,
                                  Clay_RenderCommandArray *rcommands) {
+  g_frame++;   // for the text-cache mark-and-sweep at the end of this frame
   for (size_t i = 0; i < rcommands->length; i++) {
     Clay_RenderCommand *rcmd = Clay_RenderCommandArray_Get(rcommands, i);
     const Clay_BoundingBox bounding_box = rcmd->boundingBox;
@@ -227,15 +316,51 @@ void SDL_Clay_RenderClayCommands(Clay_SDL3RendererData *rendererData,
     } break;
     case CLAY_RENDER_COMMAND_TYPE_TEXT: {
       Clay_TextRenderData *config = &rcmd->renderData.text;
-      TTF_Font *font = rendererData->fonts[config->fontId];
-      TTF_SetFontSize(font, config->fontSize);
-      TTF_Text *text = TTF_CreateText(rendererData->textEngine, font,
-                                      config->stringContents.chars,
-                                      config->stringContents.length);
-      TTF_SetTextColor(text, config->textColor.r, config->textColor.g,
-                       config->textColor.b, config->textColor.a);
-      TTF_DrawRendererText(text, rect.x, rect.y);
-      TTF_DestroyText(text);
+      const char *chars = config->stringContents.chars;
+      size_t len = config->stringContents.length;
+      uint64_t key = text_key(config->fontId, config->fontSize, chars, len);
+
+      // Look the string up in the cache; note a reusable slot while scanning.
+      TTF_Text *text = NULL;
+      int free_slot = -1, stale_slot = -1;
+      for (int k = 0; k < TEXT_CACHE_CAP; k++) {
+        if (g_text_cache[k].used) {
+          if (g_text_cache[k].key == key) {
+            text = g_text_cache[k].text;
+            g_text_cache[k].touched = g_frame;
+            break;
+          }
+          if (stale_slot < 0 && g_text_cache[k].touched != g_frame)
+            stale_slot = k;
+        } else if (free_slot < 0) {
+          free_slot = k;
+        }
+      }
+
+      bool cached = (text != NULL);
+      if (!text) {
+        // Miss: rasterize once against the (never-resized) sized font.
+        TTF_Font *font = SDL_Clay_GetSizedFont(rendererData, config->fontId,
+                                               config->fontSize);
+        text = TTF_CreateText(rendererData->textEngine, font, chars, len);
+        if (text) {
+          int slot = (free_slot >= 0) ? free_slot : stale_slot;
+          if (slot >= 0) {
+            if (g_text_cache[slot].used && g_text_cache[slot].text)
+              TTF_DestroyText(g_text_cache[slot].text);
+            g_text_cache[slot] =
+                (TextEntry){key, text, g_frame, true};
+            cached = true;
+          }
+        }
+      }
+
+      if (text) {
+        TTF_SetTextColor(text, config->textColor.r, config->textColor.g,
+                         config->textColor.b, config->textColor.a);
+        TTF_DrawRendererText(text, rect.x, rect.y);
+        if (!cached) TTF_DestroyText(text);   // cache saturated: don't leak
+      }
     } break;
     case CLAY_RENDER_COMMAND_TYPE_BORDER: {
       Clay_BorderRenderData *config = &rcmd->renderData.border;
@@ -340,4 +465,13 @@ void SDL_Clay_RenderClayCommands(Clay_SDL3RendererData *rendererData,
       SDL_Log("Unknown render command type: %d", rcmd->commandType);
     }
   }
+
+  // Mark-and-sweep: drop cached text that did not appear this frame (e.g. a
+  // previous FPS/score value), so the cache tracks only live strings.
+  for (int k = 0; k < TEXT_CACHE_CAP; k++)
+    if (g_text_cache[k].used && g_text_cache[k].touched != g_frame) {
+      TTF_DestroyText(g_text_cache[k].text);
+      g_text_cache[k].text = NULL;
+      g_text_cache[k].used = false;
+    }
 }
