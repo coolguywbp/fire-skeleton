@@ -2,6 +2,7 @@
 
 #include "game.h"    // Clay macros/types (via main.h), struct Game
 #include "script.h"  // script_game (for ui.image -> G->images)
+#include "load_i.h"  // image_id_by_name (ui.image by name)
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -353,15 +354,18 @@ static int l_ui_label(lua_State *L) {
 // optional zIndex (default 750) lets a screenshot sit above a tile button
 // (z 850) in the demo picker; plain overlays keep the default.
 static int l_ui_image(lua_State *L) {
-  int id = (int)luaL_checkinteger(L, 1);
+  struct Game *G = script_game(L);
+  if (!G || !G->images) return 0;
+  // Arg 1 is an image name (string) or a raw id (number, for back-compat).
+  int id = (lua_type(L, 1) == LUA_TSTRING)
+             ? image_id_by_name(G, lua_tostring(L, 1))
+             : (int)luaL_checkinteger(L, 1);
+  if (id < 0 || id >= G->image_count) return 0;
   float x = (float)luaL_checknumber(L, 2);
   float y = (float)luaL_checknumber(L, 3);
   float w = (float)luaL_checknumber(L, 4);
   float h = (float)luaL_checknumber(L, 5);
   int16_t z = (int16_t)luaL_optinteger(L, 6, 750);
-
-  struct Game *G = script_game(L);
-  if (!G || !G->images) return 0;
 
   Clay_ElementDeclaration d = {0};
   d.floating.attachTo = CLAY_ATTACH_TO_ROOT;

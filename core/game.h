@@ -61,7 +61,9 @@ struct Game {
   RenderCommandArray *renderCommands;
   
   EntityArchetype **archetypes;
-  SDL_Texture **images;
+  SDL_Texture **images;        // loaded from assets/images/ (see load_images)
+  char **image_names;          // parallel to images: each image's name (no .png)
+  int image_count;             // number of loaded images
 
   Script *script;
 

@@ -185,10 +185,15 @@ void game_free(struct Game **game) {
 
     // Image textures must be destroyed before the renderer that owns them.
     if (G->images) {
-      for (int i = 0; i < IMAGE_COUNT; i++)
+      for (int i = 0; i < G->image_count; i++)
         if (G->images[i]) SDL_DestroyTexture(G->images[i]);
       free(G->images);
       G->images = NULL;
+    }
+    if (G->image_names) {
+      for (int i = 0; i < G->image_count; i++) free(G->image_names[i]);
+      free(G->image_names);
+      G->image_names = NULL;
     }
 
     // Clay/TTF renderer resources. (font count must match load_fonts())

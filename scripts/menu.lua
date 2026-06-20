@@ -81,7 +81,7 @@ end
 local function skeleton()
   local off = math.sin(time() * 2.0) * 50
   local w, h = 450, 644
-  ui.image(0, SCREEN_W - w - 100, 150 + off, w, h)
+  ui.image("skeleton", SCREEN_W - w - 100, 150 + off, w, h)
 end
 
 -- Demo picker: a tile grid (3 across). Each demo is a thumbnail (a screenshot
@@ -91,10 +91,10 @@ end
 -- cover. Mouse/touch hit the ui.button under each tile; the keyboard moves a 2D
 -- cursor (dgc) over the same cells.
 local DEMOS = {
-  { key = "invaders",  name = "INVADERS",  shot = 2, go = "play"      },
-  { key = "slots",     name = "SLOTS",     shot = 3, go = "slots"     },
-  { key = "benchmark", name = "BENCHMARK", shot = 4, go = "benchmark" },
-  { key = "cube",      name = "3D CUBE",   shot = 5, go = "cube"      },
+  { key = "invaders",  name = "INVADERS",  shot = "shot_invaders",  go = "play"      },
+  { key = "slots",     name = "SLOTS",     shot = "shot_slots",     go = "slots"     },
+  { key = "benchmark", name = "BENCHMARK", shot = "shot_benchmark", go = "benchmark" },
+  { key = "cube",      name = "3D CUBE",   shot = "shot_cube",      go = "cube"      },
 }
 local DCOLS = 3
 local dgc = 1   -- demos grid cursor: 1..#DEMOS = a demo, #DEMOS+1 = BACK

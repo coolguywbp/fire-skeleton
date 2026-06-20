@@ -7,6 +7,7 @@
 #include "ecs_entity.h"   // ECS_EntityNew / Delete / GetComponent / Exists / RegisterArchetype
 #include "ui_lua.h"       // ui.* immediate-mode toolkit
 #include "g3d.h"          // g3d.* software 3D primitives
+#include "load_i.h"       // image_id_by_name (name -> image id)
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -125,18 +126,6 @@ static void prefab_untrack(Script *s, Entity e) {
   }
 }
 
-// Designer-friendly image names -> loaded image ids (see load_images()).
-static int image_id_from_name(const char *n) {
-  if (strcmp(n, "skeleton") == 0 || strcmp(n, "menu") == 0)  return 0;
-  if (strcmp(n, "sheet")    == 0 || strcmp(n, "sprite") == 0) return 1;
-  // Demo thumbnails for the demo-picker tiles (see load_i.c).
-  if (strcmp(n, "shot_invaders")  == 0) return 2;
-  if (strcmp(n, "shot_slots")     == 0) return 3;
-  if (strcmp(n, "shot_benchmark") == 0) return 4;
-  if (strcmp(n, "shot_cube")      == 0) return 5;
-  return 0;
-}
-
 // ---------------------------------------------------------------------------
 // Applying prefab defaults to a freshly created entity
 // ---------------------------------------------------------------------------
@@ -239,7 +228,8 @@ static int l_prefab_define(lua_State *L) {
       pf.spr.image = (int)lua_tointeger(L, -1);
       pf.spr.has_image = true;
     } else if (lua_isstring(L, -1)) {
-      pf.spr.image = image_id_from_name(lua_tostring(L, -1));
+      int id = image_id_by_name(s->G, lua_tostring(L, -1));
+      pf.spr.image = id < 0 ? 0 : id;     // unknown name -> first image
       pf.spr.has_image = true;
     }
     lua_pop(L, 1);
