@@ -22,14 +22,15 @@ structure it relies on, the worker pool and the logger are all hand-written,
 with no third-party code beyond the windowing/UI libraries.
 
 The hot path — simulating and rendering tens of thousands of entities — stays in
-C, while **game logic is written in Lua**. The main menu offers two modes, both
-driven by Lua scripts on top of the same engine:
+C, while **everything above it is written in Lua**: gameplay, scenes, and even
+the menus. Each scene is its own script swapped in at runtime:
 
-- **PLAY** — a small but complete **Space Invaders** clone.
-- **BENCHMARK** — an adaptive ECS stress test.
+- **menu** (`scripts/menu.lua`) — the main menu and options screen.
+- **PLAY** (`scripts/invaders.lua`) — a small but complete **Space Invaders** clone.
+- **BENCHMARK** (`scripts/benchmark.lua`) — an adaptive ECS stress test.
 
-The interface (menus, HUD) is built with **Clay**, an immediate-mode layout
-library.
+The interface (menus, HUD, game-over screens) is drawn from Lua with an
+immediate-mode **UI toolkit** that sits on top of **Clay**, a layout library.
 
 > Status: a playable demo and a stress benchmark, both scripted in Lua. The
 > focus is the architecture and how far it scales. Learning sandbox / WIP.
@@ -57,7 +58,7 @@ workstation.
 | Textures | SDL3_image |
 | Text / fonts | SDL3_ttf ([Liberation Sans](https://github.com/liberationfonts/liberation-fonts), SIL OFL) |
 | Compression | zlib |
-| UI layout | [Clay](https://github.com/nicbarker/clay) (vendored as `src/clay.h`) |
+| UI | immediate-mode Lua toolkit over [Clay](https://github.com/nicbarker/clay) (vendored as `src/clay.h`) |
 | Concurrency | POSIX threads |
 | Build | GNU Make + GCC (native), Emscripten (web, WIP) |
 | Debugging | AddressSanitizer + LeakSanitizer |
@@ -82,9 +83,10 @@ It is backed by purpose-built containers (`src/ecs_*.c`): hashtables, a **dense
 sparse-set component pool** (contiguous data, O(1) lookups), dynamic arrays, a
 memory pool, and a **barrier-based thread pool**.
 
-The game layer is a classic `events → update → render` loop with scene
-management (menu, options, level); Clay builds the UI each frame and an SDL3
-backend (`src/clay_renderer.c`) draws it.
+The game layer is a classic `events → update → render` loop. Scenes (menu,
+options, level) are Lua scripts loaded on demand; each frame the active script
+emits its UI through the toolkit, Clay lays it out, and an SDL3 backend
+(`src/clay_renderer.c`) draws it.
 
 ## Game logic & scripting (Lua)
 
