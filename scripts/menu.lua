@@ -8,10 +8,16 @@
 local L = require("menu_view")
 
 local main = mount(L.menu)
-  :on("play",      function() goto_scene("play")      end)
+  :on("play",    function() goto_scene("demos")   end)
+  :on("options", function() goto_scene("options") end)
+  :on("exit",    quit)
+
+-- PLAY opens this picker; each entry launches a demo scene.
+local demos = mount(L.demos)
+  :on("invaders",  function() goto_scene("play")      end)
+  :on("slots",     function() goto_scene("slots")     end)
   :on("benchmark", function() goto_scene("benchmark") end)
-  :on("options",   function() goto_scene("options")   end)
-  :on("exit",      quit)
+  :on("back",      function() goto_scene("menu")      end)
 
 local opts = mount(L.options)
   :on("back", function() goto_scene("menu") end)
@@ -27,8 +33,12 @@ local function skeleton()
 end
 
 function on_ui()
-  if scene() == "options" then
+  local s = scene()
+  if s == "options" then
     opts:render()
+  elseif s == "demos" then
+    demos:render()
+    skeleton()
   else
     main:render()
     skeleton()

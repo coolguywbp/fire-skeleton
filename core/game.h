@@ -78,15 +78,17 @@ typedef enum {
   SCENE_NONE = 0,
   SCENE_MAIN_MENU,
   SCENE_MAIN_MENU_OPTIONS,
+  SCENE_MAIN_MENU_DEMOS,
   SCENE_LEVEL,
   SCENE_SHOP,
   SCENE_MAX
 } Scenes;
 
-// Which script the level loads. Set by the main menu (Play vs Benchmark).
+// Which script the level loads. Set by the demo-picker menu (Play opens it).
 typedef enum {
   MODE_INVADERS = 0,
-  MODE_BENCHMARK
+  MODE_BENCHMARK,
+  MODE_SLOTS
 } GameMode;
 
 #endif

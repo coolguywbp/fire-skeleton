@@ -48,14 +48,14 @@ void ui_fps(float frameRate) {
 
   CLAY(CLAY_ID("FPS"), {
       .floating = {
-        .offset = {.x = -10, .y = 5},
+        .offset = {.x = -8, .y = -5},
         .attachTo = CLAY_ATTACH_TO_ROOT,
         .zIndex = 999,
-        .attachPoints = { .element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP }
+        .attachPoints = { .element = CLAY_ATTACH_POINT_RIGHT_BOTTOM, .parent = CLAY_ATTACH_POINT_RIGHT_BOTTOM }
       }
     }) {
     CLAY_TEXT(ToClayString(fpsStr), CLAY_TEXT_CONFIG({
-      .fontSize = 24,
+      .fontSize = 16,
       .textColor = {255, 255, 255, 255},
       .fontId = 0
     }));
@@ -65,19 +65,19 @@ void ui_fps(float frameRate) {
 void ui_object_count(struct Game *G) {
   // Static for the same lifetime reason as ui_fps's buffer.
   static char objStr[24];
-  snprintf(objStr, sizeof(objStr), "Objects: %zu", ECS_EntityCount(G->ecs));
+  snprintf(objStr, sizeof(objStr), "Entities: %zu", ECS_EntityCount(G->ecs));
 
-  // Separate label, placed to the left of the FPS counter (top-right).
+  // Separate label, placed to the left of the FPS counter (bottom-right).
   CLAY(CLAY_ID("ObjectCount"), {
       .floating = {
-        .offset = {.x = -70, .y = 5},
+        .offset = {.x = -48, .y = -5},
         .attachTo = CLAY_ATTACH_TO_ROOT,
         .zIndex = 999,
-        .attachPoints = { .element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP }
+        .attachPoints = { .element = CLAY_ATTACH_POINT_RIGHT_BOTTOM, .parent = CLAY_ATTACH_POINT_RIGHT_BOTTOM }
       }
     }) {
     CLAY_TEXT(ToClayString(objStr), CLAY_TEXT_CONFIG({
-      .fontSize = 24,
+      .fontSize = 16,
       .textColor = {255, 255, 255, 255},
       .fontId = 0
     }));

@@ -297,10 +297,12 @@ void game_update(struct Game *G) {
   switch (G->state->sceneId) {
     case SCENE_MAIN_MENU:
     case SCENE_MAIN_MENU_OPTIONS:
+    case SCENE_MAIN_MENU_DEMOS:
       want = "scripts/menu.lua";
       break;
     case SCENE_LEVEL:
       want = (G->state->mode == MODE_BENCHMARK) ? "scripts/benchmark.lua"
+           : (G->state->mode == MODE_SLOTS)     ? "scripts/slots.lua"
                                                 : "scripts/invaders.lua";
       break;
     default:

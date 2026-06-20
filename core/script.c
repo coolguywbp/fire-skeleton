@@ -452,27 +452,35 @@ static int l_time(lua_State *L) {
   return 1;
 }
 
-// scene() -> "menu" | "options" | "play" | "benchmark"
+// scene() -> "menu" | "options" | "demos" | "play" | "benchmark" | "slots"
 static int l_scene(lua_State *L) {
   struct Game *G = get_script(L)->G;
   const char *n = "menu";
   switch (G->state->sceneId) {
     case SCENE_MAIN_MENU_OPTIONS: n = "options"; break;
-    case SCENE_LEVEL: n = (G->state->mode == MODE_BENCHMARK) ? "benchmark" : "play"; break;
+    case SCENE_MAIN_MENU_DEMOS:   n = "demos";   break;
+    case SCENE_LEVEL:
+      n = (G->state->mode == MODE_BENCHMARK) ? "benchmark"
+        : (G->state->mode == MODE_SLOTS)     ? "slots"
+                                             : "play";
+      break;
     default: n = "menu"; break;
   }
   lua_pushstring(L, n);
   return 1;
 }
 
-// goto_scene(name) -- navigate. name: "menu"|"options"|"play"|"benchmark"
+// goto_scene(name) -- navigate.
+// name: "menu"|"options"|"demos"|"play"|"benchmark"|"slots"
 static int l_goto_scene(lua_State *L) {
   struct Game *G = get_script(L)->G;
   const char *name = luaL_checkstring(L, 1);
   if      (!strcmp(name, "menu"))      G->state->sceneId = SCENE_MAIN_MENU;
   else if (!strcmp(name, "options"))   G->state->sceneId = SCENE_MAIN_MENU_OPTIONS;
+  else if (!strcmp(name, "demos"))     G->state->sceneId = SCENE_MAIN_MENU_DEMOS;
   else if (!strcmp(name, "play"))      { G->state->mode = MODE_INVADERS;  G->state->sceneId = SCENE_LEVEL; }
   else if (!strcmp(name, "benchmark")) { G->state->mode = MODE_BENCHMARK; G->state->sceneId = SCENE_LEVEL; }
+  else if (!strcmp(name, "slots"))     { G->state->mode = MODE_SLOTS;     G->state->sceneId = SCENE_LEVEL; }
   else return luaL_error(L, "goto_scene: unknown scene '%s'", name);
   return 0;
 }

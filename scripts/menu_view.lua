@@ -30,13 +30,30 @@ return {
     tree = {
       { tag = "panel", class = "screen", children = {
         { tag = "panel", class = "titlebox", children = {
-          { tag = "label", class = "title", text = "FIRE SKELETON INVADER" },
+          { tag = "label", class = "title", text = "FIRE SKELETON" },
         } },
         { tag = "list", class = "list", children = {
           { tag = "button", id = "play",      class = "item", text = "PLAY" },
-          { tag = "button", id = "benchmark", class = "item", text = "BENCHMARK" },
           { tag = "button", id = "options",   class = "item", text = "OPTIONS" },
           { tag = "button", id = "exit",      class = "item", text = "EXIT" },
+        } },
+      } },
+    },
+  },
+
+  -- Demo-picker screen (reached from PLAY).
+  demos = {
+    styles = styles,
+    tree = {
+      { tag = "panel", class = "screen", children = {
+        { tag = "panel", class = "titlebox", children = {
+          { tag = "label", class = "optitle", text = "DEMOS" },
+        } },
+        { tag = "list", class = "list", children = {
+          { tag = "button", id = "invaders",  class = "item", text = "INVADERS" },
+          { tag = "button", id = "slots",     class = "item", text = "SLOTS" },
+          { tag = "button", id = "benchmark", class = "item", text = "BENCHMARK" },
+          { tag = "button", id = "back",      class = "item", text = "BACK" },
         } },
       } },
     },
