@@ -99,16 +99,23 @@ EMCC		?= emcc
 # Prebuilt Emscripten SDL3 stack, vendored in the repo by default. Override on
 # the command line (e.g. SDL3_WASM=/elsewhere) to use an install outside it.
 SDL3_WASM	?= $(CURDIR)/vendor/sdl3-wasm
+# Lua 5.4 built for wasm (the native build links the system lua5.4; Emscripten
+# has no such lib, so a static liblua.a is vendored — see vendor/lua-wasm).
+LUA_WASM	?= $(CURDIR)/vendor/lua-wasm
 WASM_OUT	?= web/game.html
 
 # gnu11 (not strict c11) so the Emscripten/musl headers expose POSIX functions
 # like clock_gettime, matching how the code builds against glibc natively.
-WASM_CFLAGS	= -std=gnu11 -O3 -I$(SDL3_WASM)/include
+WASM_CFLAGS	= -std=gnu11 -O3 -I$(SDL3_WASM)/include -I$(LUA_WASM)/include
 # Link order matters for static libs: SDL3_image -> libpng -> zlib (provided by
 # the Emscripten zlib port). freetype/harfbuzz are bundled inside libSDL3_ttf.a.
+# Lua is self-contained. assets/ and scripts/ are baked into the virtual FS so
+# the Lua scenes (loaded at runtime) and images/fonts are available in browser.
 WASM_LDFLAGS	= -L$(SDL3_WASM)/lib -lSDL3_image -lSDL3_ttf -lSDL3 -lpng16 \
+		  -L$(LUA_WASM)/lib -llua \
 		  -sUSE_ZLIB=1 -sALLOW_MEMORY_GROWTH=1 \
-		  --preload-file assets
+		  --shell-file web/shell.html \
+		  --preload-file assets --preload-file scripts
 
 web:
 	@mkdir -p $(dir $(WASM_OUT))

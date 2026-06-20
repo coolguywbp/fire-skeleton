@@ -2,8 +2,11 @@ bin/
 obj/
 .build/
 game
-web/
-vendor/
+# Web build outputs are generated; keep only the hand-written shell (a build
+# input). The vendored wasm SDL3/Lua stacks ARE committed so `make web` works
+# from a fresh clone.
+web/*
+!web/shell.html
 Graphics.af*
 
 # Source recordings (the lightweight GIF in assets/ is committed instead)

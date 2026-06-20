@@ -15,8 +15,16 @@ bool game_init_sdl(struct Game *G) {
     return false;
   }
   
-  G->window = SDL_CreateWindow(WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT,
-                               SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_MOUSE_CAPTURE);
+  // On the web the canvas is a fixed-size element: high-DPI scaling makes the
+  // drawing buffer devicePixelRatio-times larger than the canvas, which both
+  // distorts the image (non-uniform CSS fit) and offsets mouse coordinates
+  // (SDL maps them to the scaled buffer). Mouse capture is also meaningless in
+  // a browser. Keep both only on the native build.
+  SDL_WindowFlags wflags = SDL_WINDOW_OPENGL;
+#ifndef __EMSCRIPTEN__
+  wflags |= SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_MOUSE_CAPTURE;
+#endif
+  G->window = SDL_CreateWindow(WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT, wflags);
   if (!G->window) {
     fprintf(stderr, "Error creating Window: %s\n", SDL_GetError());
     return false;

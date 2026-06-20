@@ -512,6 +512,15 @@ static void register_api(lua_State *L) {
   lua_pushinteger(L, WINDOW_WIDTH);  lua_setglobal(L, "SCREEN_W");
   lua_pushinteger(L, WINDOW_HEIGHT); lua_setglobal(L, "SCREEN_H");
 
+  // Platform flag so scripts can pick safe limits on the web build (single
+  // threaded, WebGL): the benchmark caps its load far lower there.
+#ifdef __EMSCRIPTEN__
+  lua_pushboolean(L, 1);
+#else
+  lua_pushboolean(L, 0);
+#endif
+  lua_setglobal(L, "IS_WEB");
+
   // Immediate-mode UI toolkit (the `ui` table).
   ui_lua_register(L);
 }
