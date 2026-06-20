@@ -9,8 +9,10 @@ TTF_Font **load_fonts(struct Game *G) {
     // return SDL_APP_FAILURE;
   }
 
+  // Liberation Sans: a free (SIL OFL) metric-compatible clone of Helvetica/Arial
+  // with full Cyrillic coverage. See assets/fonts/LiberationSans/LICENSE.
   fonts[0] =
-      TTF_OpenFont("assets/fonts/NeueMontreal/NeueMontreal-Regular.ttf", 24);
+      TTF_OpenFont("assets/fonts/LiberationSans/LiberationSans-Regular.ttf", 24);
   if (!fonts[0]) {
     SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load font: %s",
                  SDL_GetError());
@@ -18,7 +20,7 @@ TTF_Font **load_fonts(struct Game *G) {
   }
 
   fonts[1] =
-      TTF_OpenFont("assets/fonts/NeueMontreal/NeueMontreal-Bold.ttf", 24);
+      TTF_OpenFont("assets/fonts/LiberationSans/LiberationSans-Bold.ttf", 24);
   if (!fonts[1]) {
     SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load font: %s",
                  SDL_GetError());

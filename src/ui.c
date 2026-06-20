@@ -139,7 +139,7 @@ void ui_main_menu(struct Game *G, Clay_Sizing *claySize){
         .layoutDirection = CLAY_TOP_TO_BOTTOM,
         .sizing = *claySize,
         .padding = {.bottom=200, .top=200, .left=100, .right=100},
-        .childGap = 96
+        .childGap = 126
        },
        .backgroundColor = {0,0,0,255}
   }){
