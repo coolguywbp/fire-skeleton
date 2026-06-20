@@ -37,15 +37,13 @@ immediate-mode **UI toolkit** that sits on top of **Clay**, a layout library.
 
 ## Results
 
-On a release build (`-O3 -march=native -flto`) the engine sustains roughly
-**41,700 independently-simulated and individually-rendered sprites at 30 FPS** —
-each with its own motion, edge bouncing, and repulsion from the mouse cursor.
-And that's on a modest **Asus Vivobook laptop running Arch Linux**, not a
-workstation.
+A release build (`-O3 -march=native -flto`) sustains tens of thousands of
+independently-simulated and individually-rendered sprites at interactive frame
+rates — each with its own motion, edge bouncing, and repulsion from the mouse
+cursor. The exact number is hardware-dependent, so rather than quote a figure,
+run **BENCHMARK**: it ramps the entity count until the frame rate hits a floor
+and reports the peak your machine sustains.
 
-- **~41,700** sprites @ 30 FPS — release build (modest Asus Vivobook, Arch Linux)
-- **~16,500** sprites @ 30 FPS — debug build (with AddressSanitizer)
-- Dense component storage alone took the ceiling from **~7,400 → ~16,500**
 - Clean under **AddressSanitizer + LeakSanitizer** — no leaks, no memory errors
 
 ## Tech stack
@@ -191,7 +189,8 @@ tightly packed memory and doing as little as possible per entity.
   per-entity hash, no allocation.
 - **The hot path stays in C; Lua only steers.** Game logic runs in Lua a handful
   of times per frame (spawning, events, scoring), never once-per-entity, so
-  scripting adds essentially nothing to the cost of simulating 40k entities.
+  scripting adds essentially nothing to the cost of simulating tens of thousands
+  of entities.
   Bulk spawning skips component writes the prefab doesn't set.
 - **Opt-in collision.** Only entities with a `CollisionComponent` enter the
   spatial hash, so the benchmark's pure-load sprites pay nothing for collision.
