@@ -1,6 +1,7 @@
 #include "ui.h"
 #include "game.h"
 #include "ecs_entity.h"
+#include "script.h"
 #include "main.h"
 #include <SDL3/SDL_oldnames.h>
 #include <SDL3/SDL_touch.h>
@@ -65,6 +66,7 @@ bool ui_create_layout(struct Game *G) {
   if (G->state->sceneId == SCENE_LEVEL) {
     ui_object_count(G);
     ui_hud(G);
+    script_on_ui(G);   // script-drawn UI (ui.* immediate-mode toolkit)
   }
   
   return true;

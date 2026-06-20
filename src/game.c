@@ -15,6 +15,7 @@
 #include "script.h"
 #include "collision.h"
 #include "ui.h"
+#include "ui_lua.h"
 
 #include <ctype.h>
 
@@ -222,6 +223,7 @@ void game_events(struct Game *G) {
         Clay_SetPointerState((Clay_Vector2) { G->mouse->x, G->mouse->y }, true);
         G->mouse->lastClick = currentTime;
         mouse_click_events(G);
+        ui_lua_note_click();   // let Lua ui.button() detect this press
       };
 
       break;

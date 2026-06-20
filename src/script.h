@@ -47,6 +47,10 @@ void script_on_collision(struct Game *G, Entity a, Entity b);
 // Lua on_key(key) callback, if defined. Main thread only.
 void script_on_key(struct Game *G, const char *key);
 
+// Call the script's on_ui() callback so it can draw its UI for this frame.
+// Must be invoked inside the Clay layout pass.
+void script_on_ui(struct Game *G);
+
 // Rebuild the script world from its file. The fresh state is loaded first and
 // swapped in only if it loads cleanly; on failure the running game is unchanged.
 bool script_reload(struct Game *G);

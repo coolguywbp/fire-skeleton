@@ -1,5 +1,6 @@
 #include "init_clay.h"
 #include "ui.h"
+#include "ui_lua.h"
 
 void HandleClayErrors(Clay_ErrorData errorData) {
   // See the Clay_ErrorData struct for more information
@@ -58,9 +59,11 @@ bool ui_init_clay(struct Game *G) {
 
 bool ui_update(struct Game *G) {
   Clay_SetLayoutDimensions(G->ui->clayDimensions);
+  ui_lua_begin_frame();          // reset the per-frame UI string/id arena
   Clay_BeginLayout();
   ui_create_layout(G);
   G->ui->renderCommands = Clay_EndLayout();
+  ui_lua_end_frame();            // clear any unconsumed click
   return true;
 };
 

@@ -5,6 +5,7 @@
 
 #include "components.h"   // TransformComponent / VelocityComponent / SpriteComponent + COMPONENT_ID
 #include "ecs_entity.h"   // ECS_EntityNew / Delete / GetComponent / Exists / RegisterArchetype
+#include "ui_lua.h"       // ui.* immediate-mode toolkit
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -462,6 +463,9 @@ static void register_api(lua_State *L) {
   // Screen size constants for scripts.
   lua_pushinteger(L, WINDOW_WIDTH);  lua_setglobal(L, "SCREEN_W");
   lua_pushinteger(L, WINDOW_HEIGHT); lua_setglobal(L, "SCREEN_H");
+
+  // Immediate-mode UI toolkit (the `ui` table).
+  ui_lua_register(L);
 }
 
 // ---------------------------------------------------------------------------
@@ -723,6 +727,17 @@ void script_on_key(struct Game *G, const char *key) {
   if (push_global_fn(L, "on_key")) {
     lua_pushstring(L, key);
     if (lua_pcall(L, 1, 0, 0) != LUA_OK) report_error(L, "on_key");
+  }
+}
+
+// Let the script draw its UI for this frame. Must run inside the Clay layout
+// pass (the ui.* functions emit Clay elements).
+void script_on_ui(struct Game *G) {
+  if (!G->script || !G->script->L) return;
+  lua_State *L = G->script->L;
+
+  if (push_global_fn(L, "on_ui")) {
+    if (lua_pcall(L, 0, 0, 0) != LUA_OK) report_error(L, "on_ui");
   }
 }
 

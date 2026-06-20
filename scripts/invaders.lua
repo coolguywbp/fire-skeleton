@@ -3,7 +3,8 @@
 -- A small Space Invaders clone built entirely on the Lua scripting layer.
 -- Movement is authored in Lua and synced to the ECS via set_pos(); the C side
 -- handles rendering (SpriteRenderSystem) and collision detection (spatial hash
--- over CollisionComponent), calling back into on_collision().
+-- over CollisionComponent), calling back into on_collision(). The HUD and the
+-- game-over screen are drawn with the immediate-mode `ui` toolkit in on_ui().
 --
 -- Controls: Left/Right to move, Space to shoot.
 
@@ -34,10 +35,7 @@ local invaders, bullets, bombs     -- keyed by entity id
 local fx, fy, dir                  -- formation offset + direction
 local shoot_cd, bomb_t
 local score, lives, state          -- state: "play" | "over"
-
-local function set_hud()
-  hud(string.format("SCORE %d    LIVES %d", score, lives))
-end
+local over_reason                  -- "dead" | "wave"
 
 local function destroy_all(t)
   for id in pairs(t) do destroy(id) end
@@ -62,13 +60,12 @@ local function new_game()
   if bombs then destroy_all(bombs) end
 
   invaders, bullets, bombs = {}, {}, {}
-  score, lives, state = 0, 3, "play"
+  score, lives, state, over_reason = 0, 3, "play", nil
   shoot_cd, bomb_t = 0, 0
   px = SCREEN_W / 2 - PLAYER_W / 2
   py = SCREEN_H - 110
   player = spawn_at("Player", px, py)
   spawn_wave()
-  set_hud()
 end
 
 local function next_wave()
@@ -76,18 +73,14 @@ local function next_wave()
   bullets, bombs = {}, {}
   spawn_wave()
   state = "play"
-  set_hud()
 end
 
 local function game_over()
-  state = "over"
-  hud(string.format("GAME OVER -- SCORE %d  (restarting...)", score))
-  start(function() wait(2.0); new_game() end)
+  state, over_reason = "over", "dead"
 end
 
 local function player_hit()
   lives = lives - 1
-  set_hud()
   if lives <= 0 then game_over() end
 end
 
@@ -95,7 +88,6 @@ local function resolve_hit(bullet_id, invader_id)
   destroy(bullet_id);  bullets[bullet_id]   = nil
   destroy(invader_id); invaders[invader_id] = nil
   score = score + 10
-  set_hud()
 end
 
 local function drop_bomb()
@@ -152,8 +144,7 @@ function on_update(dt)
 
   if not any then
     -- Wave cleared: brief pause, then a fresh wave (score carries over).
-    state = "over"
-    hud(string.format("WAVE CLEAR!   SCORE %d", score))
+    state, over_reason = "over", "wave"
     start(function() wait(1.5); next_wave() end)
     return
   end
@@ -196,5 +187,30 @@ function on_collision(a, b)
     local bid = bombs[a] and a or b
     destroy(bid); bombs[bid] = nil
     player_hit()
+  end
+end
+
+-- UI (immediate-mode, drawn every frame) -------------------------------------
+function on_ui()
+  ui.text(24, 16, "SCORE  " .. score, { size = 30 })
+  ui.text(SCREEN_W - 190, 16, "LIVES  " .. lives, { size = 30 })
+
+  if state ~= "over" then return end
+
+  if over_reason == "wave" then
+    ui.text(SCREEN_W / 2 - 150, SCREEN_H / 2 - 30, "WAVE CLEAR!",
+            { size = 56, color = { 137, 220, 160, 255 } })
+    return
+  end
+
+  -- Game over panel + restart button.
+  ui.rect(SCREEN_W / 2 - 230, SCREEN_H / 2 - 130, 460, 260,
+          { color = { 10, 10, 20, 215 }, radius = 14 })
+  ui.text(SCREEN_W / 2 - 150, SCREEN_H / 2 - 100, "GAME OVER",
+          { size = 56, color = { 240, 90, 90, 255 } })
+  ui.text(SCREEN_W / 2 - 70, SCREEN_H / 2 - 26, "Score: " .. score, { size = 30 })
+  if ui.button("restart", SCREEN_W / 2 - 110, SCREEN_H / 2 + 36, 220, 64, "RESTART",
+               { size = 36 }) then
+    new_game()
   end
 end
