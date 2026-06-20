@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo.gif" alt="2D game engine benchmark: tens of thousands of sprites simulated and rendered in real time, each repelled by the cursor" width="480">
+  <img src="demo.gif" alt="2D game engine benchmark: tens of thousands of sprites simulated and rendered in real time, each repelled by the cursor" width="480">
   <br>
   <sub>Tens of thousands of independently simulated and rendered sprites at interactive frame rates — the engine's built-in stress benchmark.</sub>
 </p>
