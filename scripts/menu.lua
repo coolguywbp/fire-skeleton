@@ -84,12 +84,10 @@ function on_ui()
     opts:render()
   elseif s == "video" then
     video_view():render()
-    skeleton()
   elseif s == "demos" then
     demos:render()
-    skeleton()
   else
     main:render()
-    skeleton()
   end
+  skeleton()   -- the bobbing fire-skeleton appears on every menu screen
 end
