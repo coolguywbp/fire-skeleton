@@ -93,10 +93,15 @@
 
       setStatus: function (text) {
         if (!text) { hideLoader(); return; }
-        // Emscripten emits e.g. "Downloading... (1234/5678)" -> show a percent.
+        // Emscripten emits e.g. "Downloading... (loaded/total)" -- bytes for the
+        // data file, a dependency count at startup. The browser's XHR `loaded`
+        // can briefly overshoot `total` (and dependency bookkeeping can too), so
+        // the raw ratio sometimes exceeds 100%. Guard the divisor and clamp.
         var m = text.match(/\((\d+(\.\d+)?)\/(\d+)\)/);
         if (m) {
-          var pct = Math.round(parseFloat(m[1]) / parseFloat(m[3]) * 100);
+          var total = parseFloat(m[3]);
+          var pct = total > 0 ? Math.round(parseFloat(m[1]) / total * 100) : 0;
+          pct = Math.max(0, Math.min(100, pct));
           statusEl.textContent = 'LOADING ' + pct + '%';
         } else {
           statusEl.textContent = 'LOADING…';
