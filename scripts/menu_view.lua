@@ -41,23 +41,8 @@ return {
     },
   },
 
-  -- Demo-picker screen (reached from PLAY).
-  demos = {
-    styles = styles,
-    tree = {
-      { tag = "panel", class = "screen", children = {
-        { tag = "panel", class = "titlebox", children = {
-          { tag = "label", class = "optitle", text = "DEMOS" },
-        } },
-        { tag = "list", class = "list", children = {
-          { tag = "button", id = "invaders",  class = "item", text = "INVADERS" },
-          { tag = "button", id = "slots",     class = "item", text = "SLOTS" },
-          { tag = "button", id = "benchmark", class = "item", text = "BENCHMARK" },
-          { tag = "button", id = "back",      class = "item", text = "BACK" },
-        } },
-      } },
-    },
-  },
+  -- (The demo picker is built imperatively as a thumbnail tile grid in
+  -- scripts/menu.lua, so it has no declarative layout here.)
 
   -- Options screen.
   options = {

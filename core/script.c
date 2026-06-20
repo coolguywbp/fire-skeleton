@@ -128,6 +128,10 @@ static void prefab_untrack(Script *s, Entity e) {
 static int image_id_from_name(const char *n) {
   if (strcmp(n, "skeleton") == 0 || strcmp(n, "menu") == 0)  return 0;
   if (strcmp(n, "sheet")    == 0 || strcmp(n, "sprite") == 0) return 1;
+  // Demo thumbnails for the demo-picker tiles (see load_i.c).
+  if (strcmp(n, "shot_invaders")  == 0) return 2;
+  if (strcmp(n, "shot_slots")     == 0) return 3;
+  if (strcmp(n, "shot_benchmark") == 0) return 4;
   return 0;
 }
 

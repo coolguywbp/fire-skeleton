@@ -7,6 +7,7 @@
 #include "init_ecs.h"
 
 #include "load_m.h"
+#include "load_i.h"
 #include "archetypes.h"
 
 #include <string.h>
@@ -182,9 +183,8 @@ void game_free(struct Game **game) {
     }
 
     // Image textures must be destroyed before the renderer that owns them.
-    // (count must match load_images())
     if (G->images) {
-      for (int i = 0; i < 2; i++)
+      for (int i = 0; i < IMAGE_COUNT; i++)
         if (G->images[i]) SDL_DestroyTexture(G->images[i]);
       free(G->images);
       G->images = NULL;
@@ -456,6 +456,11 @@ void game_update(struct Game *G) {
 }
 
 void game_render(struct Game *G) {
+  // Clear to black explicitly. SDL_RenderClear uses the current draw colour,
+  // which is left as whatever the Clay renderer last set (e.g. white from the
+  // menu tile borders); without this the level/benchmark would clear to that
+  // leaked colour instead of black.
+  SDL_SetRenderDrawColor(G->renderer, 0, 0, 0, 255);
   SDL_RenderClear(G->renderer);
 
   // ECS render systems (e.g. SpriteRenderSystem) draw here, after the clear and

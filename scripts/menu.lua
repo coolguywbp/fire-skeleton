@@ -25,13 +25,6 @@ local main = mount(L.menu)
   :on("options", function() goto_scene("options") end)
   :on("exit",    quit)
 
--- PLAY opens this picker; each entry launches a demo scene.
-local demos = mount(L.demos)
-  :on("invaders",  function() goto_scene("play")      end)
-  :on("slots",     function() goto_scene("slots")     end)
-  :on("benchmark", function() goto_scene("benchmark") end)
-  :on("back",      function() goto_scene("menu")      end)
-
 local opts = mount(L.options)
   :on("video", function() goto_scene("video") end)
   :on("back",  function() goto_scene("menu") end)
@@ -91,38 +84,98 @@ local function skeleton()
   ui.image(0, SCREEN_W - w - 100, 150 + off, w, h)
 end
 
--- Keyboard navigation. The selected item per screen is remembered in `cursor`
--- (keyed by scene name) and reset to the top whenever we enter a new screen.
+-- Demo picker: a tile grid (3 across). Each demo is a thumbnail (a screenshot
+-- captured 5 s into the demo, loaded as an image id -- see load_i.c) with its
+-- name below; BACK is the trailing tile. Built imperatively because a tile is an
+-- image + caption + click target, which the text-only declarative buttons don't
+-- cover. Mouse/touch hit the ui.button under each tile; the keyboard moves a 2D
+-- cursor (dgc) over the same cells.
+local DEMOS = {
+  { key = "invaders",  name = "INVADERS",  shot = 2, go = "play"      },
+  { key = "slots",     name = "SLOTS",     shot = 3, go = "slots"     },
+  { key = "benchmark", name = "BENCHMARK", shot = 4, go = "benchmark" },
+}
+local DCOLS = 3
+local dgc = 1   -- demos grid cursor: 1..#DEMOS = a demo, #DEMOS+1 = BACK
+
+local function demo_count() return #DEMOS + 1 end
+
+local function demo_activate(i)
+  if i >= 1 and i <= #DEMOS then goto_scene(DEMOS[i].go)
+  else goto_scene("menu") end   -- BACK
+end
+
+local function draw_demos()
+  ui.rect(0, 0, SCREEN_W, SCREEN_H, { color = { 0, 0, 0, 255 } })
+  ui.text(SCREEN_W / 2 - 140, 80, "DEMOS", { size = 90, font = 1 })
+
+  local tw, th, gap, imgh = 360, 254, 32, 194
+  local n     = demo_count()
+  local gridw = DCOLS * tw + (DCOLS - 1) * gap
+  local sx    = (SCREEN_W - gridw) / 2
+  local sy    = 300
+  local WHITE = { 255, 255, 255, 255 }
+
+  for i = 1, n do
+    local col = (i - 1) % DCOLS
+    local row = math.floor((i - 1) / DCOLS)
+    local x   = sx + col * (tw + gap)
+    local y   = sy + row * (th + gap)
+    -- Monochrome to match the rest of the menu: no fill, a thin white frame that
+    -- thickens on hover / keyboard selection.
+    local frame = { color = { 0, 0, 0, 0 }, hover_color = { 0, 0, 0, 0 },
+                    border = 2, border_hot = 6, border_color = WHITE,
+                    radius = 4, selected = (dgc == i) }
+    local d = DEMOS[i]
+    if d then
+      if ui.button(d.key, x, y, tw, th, "", frame) then demo_activate(i) end
+      ui.image(d.shot, x + 8, y + 8, tw - 16, imgh, 870)   -- z above the tile frame
+      local cw = #d.name * 28 * 0.62                        -- approx centre (no text metrics)
+      ui.text(x + (tw - cw) / 2, y + imgh + 16, d.name, { size = 28, font = 1 })
+    else
+      frame.size = 40
+      if ui.button("back", x, y, tw, th, "BACK", frame) then demo_activate(i) end
+    end
+  end
+end
+
+-- Keyboard navigation. The selected item per screen is remembered (cursor for
+-- the declarative menus, dgc for the demos grid) and reset on entering a screen.
 -- The video screen is rebuilt every frame, so its cursor lives here rather than
 -- on the (ephemeral) view object and is applied to each fresh mount.
 local cursor = {}
 local active = nil
 
+local function enter(s)
+  if s ~= active then active = s; cursor[s] = 1; dgc = 1 end
+end
+
 local function view_for(s)
   if s == "options" then return opts
   elseif s == "video" then return video_view()
-  elseif s == "demos" then return demos
   else return main end
 end
 
--- The current screen's view with the remembered cursor applied. Both on_key and
--- on_ui go through this so they always agree on the selection.
-local function current()
+function on_key(key)
   local s = scene()
-  if s ~= active then cursor[s] = 1; active = s end
+  enter(s)
+  if s == "demos" then
+    local n = demo_count()
+    if     key == "left"  then dgc = math.max(1, dgc - 1)
+    elseif key == "right" then dgc = math.min(n, dgc + 1)
+    elseif key == "up"    then if dgc - DCOLS >= 1 then dgc = dgc - DCOLS end
+    elseif key == "down"  then if dgc + DCOLS <= n then dgc = dgc + DCOLS end
+    elseif key == "return" or key == "keypad enter" then demo_activate(dgc) end
+    return
+  end
   local v = view_for(s)
   v.cursor = cursor[s] or 1
-  return v, s
-end
-
-function on_key(key)
-  local v, s = current()
   if key == "up" then
     v:nav(-1)
   elseif key == "down" then
     v:nav(1)
   elseif key == "return" or key == "keypad enter" then
-    v:activate()   -- may switch scenes; cursor state for the new one resets above
+    v:activate()   -- may switch scenes; the new one resets via enter() next frame
     return
   else
     return
@@ -131,7 +184,14 @@ function on_key(key)
 end
 
 function on_ui()
-  local v = current()
+  local s = scene()
+  enter(s)
+  if s == "demos" then
+    draw_demos()   -- its own full-screen background; no floating skeleton (no room)
+    return
+  end
+  local v = view_for(s)
+  v.cursor = cursor[s] or 1
   v:render()
-  skeleton()   -- the bobbing fire-skeleton appears on every menu screen
+  skeleton()   -- the bobbing fire-skeleton appears on the other menu screens
 end

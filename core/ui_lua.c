@@ -131,9 +131,19 @@ static int ui_button_floating(lua_State *L, const char *id) {
   Clay_Color bgh  = opt_color(L, opt, "hover_color", (Clay_Color){70, 70, 110, 255});
   Clay_Color txt  = opt_color(L, opt, "text_color",  (Clay_Color){255, 255, 255, 255});
   uint16_t   size = (uint16_t)opt_num(L, opt, "size", 40);
+  // Optional border that thickens on hover or when keyboard-selected: opts
+  // border (base width), border_hot (active width), border_color, selected.
+  uint16_t   bw   = (uint16_t)opt_num(L, opt, "border", 0);
+  uint16_t   bwh  = (uint16_t)opt_num(L, opt, "border_hot", bw);
+  Clay_Color bcol = opt_color(L, opt, "border_color", (Clay_Color){255, 255, 255, 255});
+  uint16_t   rad  = (uint16_t)opt_num(L, opt, "radius", 8);
+  bool selected = false;
+  if (opt) { lua_getfield(L, opt, "selected"); selected = lua_toboolean(L, -1); lua_pop(L, 1); }
 
   Clay_String cid = clay_str(intern(id));
   bool over = Clay_PointerOver(Clay_GetElementId(cid));
+  bool hot  = over || selected;
+  uint16_t curbw = hot ? bwh : bw;
 
   CLAY(CLAY_SID(cid), {
     .floating = { .offset = { x, y }, .attachTo = CLAY_ATTACH_TO_ROOT, .zIndex = 850,
@@ -141,8 +151,9 @@ static int ui_button_floating(lua_State *L, const char *id) {
                                     .parent  = CLAY_ATTACH_POINT_LEFT_TOP } },
     .layout = { .sizing = { CLAY_SIZING_FIXED(w), CLAY_SIZING_FIXED(h) },
                 .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER } },
-    .backgroundColor = over ? bgh : bg,
-    .cornerRadius = CLAY_CORNER_RADIUS(8)
+    .backgroundColor = hot ? bgh : bg,
+    .border = { .color = bcol, .width = CLAY_BORDER_ALL(curbw) },
+    .cornerRadius = CLAY_CORNER_RADIUS(rad)
   }) {
     CLAY_TEXT(clay_str(label), CLAY_TEXT_CONFIG({
       .fontSize = size, .textColor = txt, .fontId = 1 }));
@@ -338,13 +349,16 @@ static int l_ui_label(lua_State *L) {
   return 0;
 }
 
-// ui.image(imageId, x, y, w, h) -- floating image overlay.
+// ui.image(imageId, x, y, w, h [, zIndex]) -- floating image overlay. The
+// optional zIndex (default 750) lets a screenshot sit above a tile button
+// (z 850) in the demo picker; plain overlays keep the default.
 static int l_ui_image(lua_State *L) {
   int id = (int)luaL_checkinteger(L, 1);
   float x = (float)luaL_checknumber(L, 2);
   float y = (float)luaL_checknumber(L, 3);
   float w = (float)luaL_checknumber(L, 4);
   float h = (float)luaL_checknumber(L, 5);
+  int16_t z = (int16_t)luaL_optinteger(L, 6, 750);
 
   struct Game *G = script_game(L);
   if (!G || !G->images) return 0;
@@ -352,7 +366,7 @@ static int l_ui_image(lua_State *L) {
   Clay_ElementDeclaration d = {0};
   d.floating.attachTo = CLAY_ATTACH_TO_ROOT;
   d.floating.offset = (Clay_Vector2){ x, y };
-  d.floating.zIndex = 750;
+  d.floating.zIndex = z;
   d.floating.attachPoints.element = CLAY_ATTACH_POINT_LEFT_TOP;
   d.floating.attachPoints.parent  = CLAY_ATTACH_POINT_LEFT_TOP;
   d.layout.sizing.width  = CLAY_SIZING_FIXED(w);
