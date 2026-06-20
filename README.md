@@ -9,6 +9,11 @@
 </p>
 
 <p align="center">
+  <a href="https://coolguywbp.github.io/fire-skeleton-invader/"><b>▶ Play in your browser</b></a>
+  &nbsp;·&nbsp; no install — runs the WebAssembly build (Chrome/Firefox)
+</p>
+
+<p align="center">
   <img src="assets/demo.gif" alt="Benchmark: tens of thousands of sprites, each bouncing and repelled by the cursor" width="480">
   <br>
   <sub>The benchmark at full tilt — tens of thousands of sprites, each independently simulated and rendered, repelled by the cursor.</sub>
@@ -264,6 +269,10 @@ winpthreads are linked statically, so only the three SDL DLLs ship alongside
 the exe.
 
 ### WebAssembly (Emscripten)
+
+A live build is published to GitHub Pages on every push to `main` (see
+`.github/workflows/deploy-web.yml`): **[play it in your
+browser](https://coolguywbp.github.io/fire-skeleton-invader/)** — no install.
 
 The same sources also build for the browser, and `git clone` + `make web` works
 out of the box: the wasm SDL3 stack (`vendor/sdl3-wasm`) and a Lua 5.4 static
