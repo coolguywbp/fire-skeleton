@@ -22,17 +22,74 @@
       width: 100vw; height: 100vh;
       touch-action: none; -webkit-tap-highlight-color: transparent;
     }
+    /* Loading overlay: the ~7.7 MB wasm+assets take a few seconds to download
+       and compile, during which the canvas is just black. Show progress instead
+       of a blank screen, then fade out once the runtime is ready. */
+    #loading {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: #000; color: #fff;
+      font-family: system-ui, sans-serif; transition: opacity .4s ease;
+    }
+    #loading.hidden { opacity: 0; pointer-events: none; }
+    #loading h1 { margin: 0 0 24px; font-size: 8vw; letter-spacing: .05em; color: #e6783c; }
+    #loading .status { font-size: 16px; color: #aaa; min-height: 1.2em; }
+    #loading progress {
+      width: min(70vw, 360px); height: 10px; margin-top: 16px;
+      accent-color: #e6783c;
+    }
   </style>
 </head>
 <body>
+  <div id="loading">
+    <h1>FIRE SKELETON</h1>
+    <div class="status" id="loadStatus">Loading&hellip;</div>
+    <progress id="loadProgress" value="0" max="100"></progress>
+  </div>
   <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
   <script type="text/javascript">
+    var loadEl      = document.getElementById('loading');
+    var statusEl    = document.getElementById('loadStatus');
+    var progressEl  = document.getElementById('loadProgress');
+    var loaderHidden = false;
+
+    function hideLoader() {
+      if (loaderHidden) return;
+      loaderHidden = true;
+      loadEl.classList.add('hidden');
+      setTimeout(function () { loadEl.style.display = 'none'; }, 500);
+    }
+
     var Module = {
       canvas: document.getElementById('canvas'),
       // Keep stdout/stderr in the devtools console (handy for bug reports).
       print:    function (t) { console.log(t); },
       printErr: function (t) { console.error(t); },
+
+      totalDependencies: 0,
+      setStatus: function (text) {
+        if (!text) { hideLoader(); return; }
+        // Emscripten emits e.g. "Downloading... (1234/5678)".
+        var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+        if (m) {
+          progressEl.removeAttribute('hidden');
+          progressEl.value = parseInt(m[2], 10);
+          progressEl.max   = parseInt(m[4], 10);
+          statusEl.textContent = m[1].trim();
+        } else {
+          statusEl.textContent = text;
+        }
+      },
+      monitorRunDependencies: function (left) {
+        this.totalDependencies = Math.max(this.totalDependencies, left);
+        if (left === 0) Module.setStatus('Starting&hellip;');
+      },
+      // First frame is about to run -- drop the overlay.
+      onRuntimeInitialized: function () { setTimeout(hideLoader, 200); },
     };
+    Module.setStatus('Downloading…');
+    // Safety net: never leave the loader stuck if a status event is missed.
+    window.addEventListener('error', hideLoader);
   </script>
   {{{ SCRIPT }}}
 </body>
