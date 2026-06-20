@@ -58,7 +58,7 @@ and reports the peak your machine sustains.
 | Compression | zlib |
 | UI | immediate-mode Lua toolkit over [Clay](https://github.com/nicbarker/clay) (vendored as `src/clay.h`) |
 | Concurrency | POSIX threads |
-| Build | GNU Make + GCC (native), Emscripten (web, WIP) |
+| Build | GNU Make + GCC (native), Emscripten (web) |
 | Debugging | AddressSanitizer + LeakSanitizer |
 
 The ECS, its containers, the worker pool and the logger are written from scratch
@@ -225,8 +225,8 @@ pointed straight at the storage layout.
 
 ## Building & running
 
-Two builds from the same sources: native Linux/GCC, and an experimental
-WebAssembly build via Emscripten.
+Two builds from the same sources: native Linux/GCC, and a (single-threaded)
+WebAssembly build via Emscripten that runs in the browser.
 
 ### Native (Linux + GCC)
 
@@ -244,28 +244,35 @@ make clean
 **Space** to shoot. In **BENCHMARK**: move the mouse to repel sprites. **Q /
 Esc** returns to the menu; **E** toggles the Clay debug overlay (debug builds).
 
-### WebAssembly (Emscripten) — experimental / WIP
+### WebAssembly (Emscripten)
 
-> ⚠️ **Unfinished.** The wasm target *compiles and links*, but the web build is
-> not yet verified to run correctly in a browser — more work is needed (canvas/
-> WebGL setup, input mapping, asset paths, and rethinking the benchmark, since
-> browser frames are capped at the display refresh rate). Treat it as a starting
-> point, not a finished feature.
-
-Requires the [Emscripten SDK](https://emscripten.org/) (`emcc`) and an
-Emscripten-built SDL3 stack (SDL3 + SDL3_image + SDL3_ttf compiled for wasm).
-Place it in `vendor/sdl3-wasm/` (prebuilt libs are not committed — large and
-tied to specific versions), then:
+The same sources also build for the browser, and `git clone` + `make web` works
+out of the box: the wasm SDL3 stack (`vendor/sdl3-wasm`) and a Lua 5.4 static
+lib (`vendor/lua-wasm`) are vendored in the repo, and `assets/` + `scripts/` are
+baked into the virtual filesystem so the Lua scenes load at runtime. The only
+external requirement is the [Emscripten SDK](https://emscripten.org/) (`emcc`).
 
 ```sh
-make web                                 # uses vendor/sdl3-wasm by default
-make web SDL3_WASM=/path/to/sdl3-stack   # or point elsewhere
-python3 -m http.server --directory web   # serve web/game.html
+make web                                 # -> web/game.{html,js,wasm,data}
+make web SDL3_WASM=/path/to/sdl3-stack   # or point at an external SDL3 stack
+python3 -m http.server --directory web   # then open http://localhost:8000/game.html
 ```
 
-The web build runs single-threaded (browser threads need SharedArrayBuffer /
-COOP-COEP), is driven by `requestAnimationFrame`, and bundles assets into
-`game.data`.
+Serve it over HTTP (not `file://`). Notes on the web build:
+
+- **Single-threaded.** Browser worker threads need SharedArrayBuffer (COOP/COEP
+  headers), so the ECS worker pool is disabled on web and the loop is driven by
+  `requestAnimationFrame`. Expect far lower entity counts than native.
+- **Capped benchmark.** Because it's single-threaded, the benchmark enforces a
+  hard entity ceiling on web so a slow frame can't snowball and lock up the tab.
+- **Minimal page.** A custom shell (`web/shell.html`) renders just the canvas at
+  the native 4:3 resolution — no Emscripten chrome, and high-DPI is disabled so
+  the image isn't distorted and the mouse maps 1:1.
+- **Text caching.** Rendered glyphs are cached per `(font, size, string)` rather
+  than re-rasterized each frame, which matters a lot on the single-threaded
+  build (see `src/clay_renderer.c`).
+
+It's a port of a native-first engine and still rough in places, but it runs.
 
 ## By the numbers
 
