@@ -591,9 +591,8 @@ static void register_api(lua_State *L) {
   // aspect (the adaptive logical width), so scenes fill the screen at any size.
   // Seeded from the current size here and refreshed on resize (see
   // script_update_screen_dims). Globals, not constants -- scripts re-read them.
-  struct Game *G = script_game(L);
-  lua_pushinteger(L, G ? G->logical_w : WINDOW_WIDTH);  lua_setglobal(L, "SCREEN_W");
-  lua_pushinteger(L, G ? G->logical_h : WINDOW_HEIGHT); lua_setglobal(L, "SCREEN_H");
+  lua_pushinteger(L, g_logical_w); lua_setglobal(L, "SCREEN_W");
+  lua_pushinteger(L, g_logical_h); lua_setglobal(L, "SCREEN_H");
 
   // Platform flag so scripts can pick safe limits on the web build (single
   // threaded, WebGL): the benchmark caps its load far lower there.
@@ -960,8 +959,8 @@ void script_update(struct Game *G, float dt) {
 void script_update_screen_dims(struct Game *G) {
   if (!G || !G->script || !G->script->L) return;
   lua_State *L = G->script->L;
-  lua_pushinteger(L, G->logical_w); lua_setglobal(L, "SCREEN_W");
-  lua_pushinteger(L, G->logical_h); lua_setglobal(L, "SCREEN_H");
+  lua_pushinteger(L, g_logical_w); lua_setglobal(L, "SCREEN_W");
+  lua_pushinteger(L, g_logical_h); lua_setglobal(L, "SCREEN_H");
 }
 
 void script_on_collision(struct Game *G, Entity a, Entity b) {

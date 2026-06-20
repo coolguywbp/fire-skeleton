@@ -57,12 +57,6 @@ struct Game {
   GameState *state;
   struct UI *ui;
 
-  // Adaptive logical render space. Height is fixed (WINDOW_HEIGHT); width tracks
-  // the window's aspect ratio so the world fills the screen edge-to-edge with no
-  // letterbox bars. Recomputed on every window-size change. The Lua SCREEN_W /
-  // SCREEN_H globals and Clay's layout dimensions mirror these.
-  int logical_w, logical_h;
-
   ECS *ecs;
   RenderCommandArray *renderCommands;
   
@@ -87,20 +81,24 @@ struct Game {
   int frameAccumCount;
 };
 
-// Current play-field size in logical units (mirrors G->logical_w/h, kept in
-// sync by game_recompute_presentation). Globals because component constructors
-// and ECS systems run without a Game pointer, yet the benchmark's sprite spawn
-// area and bounce walls must track the adaptive screen so they fill it.
-extern int g_play_w, g_play_h;
+// The one canonical render size: the adaptive logical space everything draws
+// into. Height is fixed (WINDOW_HEIGHT); width tracks the window's aspect ratio
+// so the world fills the screen edge to edge with no letterbox bars. Computed
+// by game_recompute_presentation on every window-size change; the renderer's
+// logical presentation, Clay's layout dimensions and the Lua SCREEN_W/SCREEN_H
+// globals are all derived from it. A global (not a Game field) so component
+// constructors and ECS systems -- which run without a Game pointer -- read the
+// same value. Defaults to the design size until the first presentation runs.
+extern int g_logical_w, g_logical_h;
 
 bool game_new(struct Game **game);
 void game_free(struct Game **game);
 bool game_run(struct Game *G);
 
-// Recompute the adaptive logical render space from the current window pixel size
-// (fixed height, aspect-matched width), then push it to the renderer's logical
-// presentation, Clay's layout dimensions and the script's SCREEN_W/H globals.
-// Safe before the UI/script exist (it skips whichever isn't ready yet).
+// Recompute g_logical_w/h from the current window pixel size, then push it to
+// the renderer's logical presentation, Clay's layout dimensions and the
+// script's SCREEN_W/H globals. Safe before the UI/script exist (it skips
+// whichever isn't ready yet).
 void game_recompute_presentation(struct Game *G);
 
 typedef enum {

@@ -388,10 +388,10 @@ static void dispatch_key_to_script(struct Game *G, SDL_Scancode sc) {
   script_on_key(G, buf);
 }
 
-// Play-field size in logical units; default to the design size until the first
-// presentation is computed. Mirrors G->logical_w/h (see game_recompute_presentation).
-int g_play_w = WINDOW_WIDTH;
-int g_play_h = WINDOW_HEIGHT;
+// The canonical logical render size (see game.h). Defaults to the design size
+// until the first presentation is computed.
+int g_logical_w = WINDOW_WIDTH;
+int g_logical_h = WINDOW_HEIGHT;
 
 void game_recompute_presentation(struct Game *G) {
   // Drive the logical space from the actual drawable (pixel) size so HiDPI is
@@ -402,20 +402,16 @@ void game_recompute_presentation(struct Game *G) {
   SDL_GetWindowSizeInPixels(G->window, &pw, &ph);
   if (pw <= 0 || ph <= 0) { pw = WINDOW_WIDTH; ph = WINDOW_HEIGHT; }
 
-  G->logical_h = WINDOW_HEIGHT;
-  G->logical_w = (int)((double)WINDOW_HEIGHT * pw / ph + 0.5);
-  if (G->logical_w < 1) G->logical_w = WINDOW_WIDTH;
+  g_logical_h = WINDOW_HEIGHT;
+  g_logical_w = (int)((double)WINDOW_HEIGHT * pw / ph + 0.5);
+  if (g_logical_w < 1) g_logical_w = WINDOW_WIDTH;
 
-  // Keep the play-field globals (benchmark spawn area + bounce walls) in sync.
-  g_play_w = G->logical_w;
-  g_play_h = G->logical_h;
-
-  SDL_SetRenderLogicalPresentation(G->renderer, G->logical_w, G->logical_h,
+  SDL_SetRenderLogicalPresentation(G->renderer, g_logical_w, g_logical_h,
                                    SDL_LOGICAL_PRESENTATION_LETTERBOX);
 
   if (G->ui)
     G->ui->clayDimensions =
-        (Clay_Dimensions){ (float)G->logical_w, (float)G->logical_h };
+        (Clay_Dimensions){ (float)g_logical_w, (float)g_logical_h };
 
   script_update_screen_dims(G);
 }

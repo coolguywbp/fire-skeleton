@@ -91,16 +91,16 @@ void VelocitySystem_update(Entity e, Component **c, VelocitySystem *system)
   if (transform->x < 0.0f) {
     transform->x = 0.0f;
     velocity->vx = -velocity->vx;
-  } else if (transform->x + w > (float)g_play_w) {
-    transform->x = (float)g_play_w - w;
+  } else if (transform->x + w > (float)g_logical_w) {
+    transform->x = (float)g_logical_w - w;
     velocity->vx = -velocity->vx;
   }
 
   if (transform->y < 0.0f) {
     transform->y = 0.0f;
     velocity->vy = -velocity->vy;
-  } else if (transform->y + h > (float)g_play_h) {
-    transform->y = (float)g_play_h - h;
+  } else if (transform->y + h > (float)g_logical_h) {
+    transform->y = (float)g_logical_h - h;
     velocity->vy = -velocity->vy;
   }
 }

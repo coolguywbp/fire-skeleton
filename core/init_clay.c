@@ -48,7 +48,7 @@ bool ui_init_clay(struct Game *G) {
   // Match the adaptive logical space computed in game_init_sdl (fixed height,
   // aspect-matched width) so the UI lays out across the whole screen.
   Clay_Dimensions dimensions =
-      (Clay_Dimensions){ (float)G->logical_w, (float)G->logical_h };
+      (Clay_Dimensions){ (float)g_logical_w, (float)g_logical_h };
   ui->clayDimensions = dimensions;
 
   if (!Clay_Initialize(clayMemory, dimensions,
