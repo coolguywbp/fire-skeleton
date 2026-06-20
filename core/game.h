@@ -87,6 +87,12 @@ struct Game {
   int frameAccumCount;
 };
 
+// Current play-field size in logical units (mirrors G->logical_w/h, kept in
+// sync by game_recompute_presentation). Globals because component constructors
+// and ECS systems run without a Game pointer, yet the benchmark's sprite spawn
+// area and bounce walls must track the adaptive screen so they fill it.
+extern int g_play_w, g_play_h;
+
 bool game_new(struct Game **game);
 void game_free(struct Game **game);
 bool game_run(struct Game *G);

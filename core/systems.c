@@ -84,22 +84,23 @@ void VelocitySystem_update(Entity e, Component **c, VelocitySystem *system)
   transform->x += velocity->vx;
   transform->y += velocity->vy;
 
-  // Bounce off the window edges exactly on contact. The sprite is drawn from
+  // Bounce off the play-field edges exactly on contact. The sprite is drawn from
   // its top-left corner, so the right/bottom edges are at x+w / y+h. Clamp the
-  // edge to the boundary instead of letting it overshoot before reversing.
+  // edge to the boundary instead of letting it overshoot before reversing. The
+  // field tracks the adaptive screen size so sprites fill a fullscreen window.
   if (transform->x < 0.0f) {
     transform->x = 0.0f;
     velocity->vx = -velocity->vx;
-  } else if (transform->x + w > WINDOW_WIDTH) {
-    transform->x = WINDOW_WIDTH - w;
+  } else if (transform->x + w > (float)g_play_w) {
+    transform->x = (float)g_play_w - w;
     velocity->vx = -velocity->vx;
   }
 
   if (transform->y < 0.0f) {
     transform->y = 0.0f;
     velocity->vy = -velocity->vy;
-  } else if (transform->y + h > WINDOW_HEIGHT) {
-    transform->y = WINDOW_HEIGHT - h;
+  } else if (transform->y + h > (float)g_play_h) {
+    transform->y = (float)g_play_h - h;
     velocity->vy = -velocity->vy;
   }
 }

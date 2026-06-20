@@ -8,9 +8,10 @@ void TransformComponent_new(TransformComponent *comp)
 {
   comp->w = 50;
   comp->h = 50;
-  // Random on-screen position, kept fully inside the window (accounting for size).
-  comp->x = random_float(0, (float)WINDOW_WIDTH - comp->w);
-  comp->y = random_float(0, (float)WINDOW_HEIGHT - comp->h);
+  // Random on-screen position, kept fully inside the play-field (which tracks
+  // the adaptive screen size, so benchmark sprites fill a fullscreen window too).
+  comp->x = random_float(0, (float)g_play_w - comp->w);
+  comp->y = random_float(0, (float)g_play_h - comp->h);
 }
 void TransformComponent_free(TransformComponent *comp)
 {
