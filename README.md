@@ -166,7 +166,10 @@ function on_collision(a, b) ... end -- C spatial-hash broad-phase calls back her
 
 Exposed to Lua: `prefab`, `spawn` / `spawn_at` / `spawn_many` / `destroy` /
 `despawn` / `count`, `set_pos` / `get_pos`, `key_down`, `fps`, `hud`, the
-coroutine helpers `start` / `wait`, and `SCREEN_W` / `SCREEN_H`.
+coroutine helpers `start` / `wait`, and `SCREEN_W` / `SCREEN_H`. The complete
+surface — callbacks, entities, input, touch, scenes, window/video, the `ui.*`
+toolkit and the declarative view runtime — is in the
+**[Lua API reference](docs/lua-api.md)**.
 
 **Hot reload:** the active script is watched and a fresh Lua state is swapped in
 *only if it loads cleanly* — a syntax error leaves the running game untouched.
