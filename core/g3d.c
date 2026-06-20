@@ -5,12 +5,16 @@
 #include <lauxlib.h>
 #include <math.h>
 
-// Perspective camera. Primitives live near the origin; we push them CAM_DIST
-// down +z so the perspective divide is well-defined, and scale by a focal
-// length tied to the logical height so the result looks the same at any
-// resolution (the renderer's logical presentation handles the final letterbox).
-#define CAM_DIST 4.0f
-#define FOCAL_K  0.9f
+// Perspective camera. The camera sits at g_cam_* looking along +z; the focal
+// length is derived from the vertical field of view, so the scene controls
+// framing through g3d.camera()/g3d.fov() instead of fixed magic numbers. The
+// defaults put the camera 4 units back with a ~58 degrees FOV, which matches the
+// previous fixed projection. Resolution independence still comes from tying the
+// focal to the logical height (the logical presentation handles the letterbox).
+#define G3D_PI 3.14159265358979323846f
+
+static float g_cam_x = 0.0f, g_cam_y = 0.0f, g_cam_z = -4.0f;  // camera position
+static float g_fov_deg = 58.0f;                                // vertical FOV
 
 // Projected line list, filled by the g3d.* primitives during on_ui() and drawn
 // by g3d_flush() in the render pass. Lines hold final 2D (logical) coordinates;
@@ -87,13 +91,25 @@ static Vec3 rotate(Vec3 p, float rx, float ry, float rz) {
   return (Vec3){ x3, y3, z3 };
 }
 
-// World point -> 2D logical-screen coordinates (perspective projection).
+// Focal length (in logical pixels) from the vertical FOV: half the viewport
+// height over tan(halfFov). Wider FOV -> shorter focal -> smaller, more
+// "wide-angle" objects; narrower FOV zooms in.
+static float focal_len(void) {
+  float fov = g_fov_deg * (G3D_PI / 180.0f);
+  return (float)g_logical_h * 0.5f / tanf(fov * 0.5f);
+}
+
+// World point -> 2D logical-screen coordinates (perspective projection). The
+// point is taken into camera space (relative to the camera position) and then
+// divided by its depth.
 static void project(Vec3 p, float *sx, float *sy) {
-  float z = p.z + CAM_DIST;
-  if (z < 0.001f) z = 0.001f;             // never divide through the camera plane
-  float focal = FOCAL_K * (float)g_logical_h;
-  *sx = (float)g_logical_w * 0.5f + (p.x / z) * focal;
-  *sy = (float)g_logical_h * 0.5f - (p.y / z) * focal;   // +y is up
+  float cx = p.x - g_cam_x;
+  float cy = p.y - g_cam_y;
+  float cz = p.z - g_cam_z;
+  if (cz < 0.001f) cz = 0.001f;           // never divide through the camera plane
+  float focal = focal_len();
+  *sx = (float)g_logical_w * 0.5f + (cx / cz) * focal;
+  *sy = (float)g_logical_h * 0.5f - (cy / cz) * focal;   // +y is up
 }
 
 static void push_line(float x1, float y1, float x2, float y2,
@@ -218,7 +234,7 @@ static int l_cube(lua_State *L) {
     for (int f = 0; f < 6; f++) {
       float zc = 0.0f;
       for (int k = 0; k < 4; k++) zc += R[F[f][k]].z;
-      depth[f] = zc * 0.25f + cz;             // camera-space depth (CAM_DIST is constant)
+      depth[f] = zc * 0.25f + cz;             // depth along +z (camera z is a constant offset)
     }
     for (int a = 0; a < 6; a++)               // insertion sort, far -> near
       for (int b = a + 1; b < 6; b++)
@@ -261,8 +277,27 @@ static int l_tri(lua_State *L) {
   return 0;
 }
 
+// g3d.camera(x, y, z) -- move the camera (it looks along +z).
+static int l_camera(lua_State *L) {
+  g_cam_x = (float)luaL_checknumber(L, 1);
+  g_cam_y = (float)luaL_checknumber(L, 2);
+  g_cam_z = (float)luaL_checknumber(L, 3);
+  return 0;
+}
+
+// g3d.fov(degrees) -- set the vertical field of view (clamped to a sane range).
+static int l_fov(lua_State *L) {
+  float d = (float)luaL_checknumber(L, 1);
+  if (d < 1.0f)   d = 1.0f;
+  if (d > 179.0f) d = 179.0f;
+  g_fov_deg = d;
+  return 0;
+}
+
 void g3d_register(lua_State *L) {
   static const luaL_Reg fns[] = {
+    { "camera", l_camera },
+    { "fov",    l_fov },
     { "line", l_line },
     { "tri",  l_tri },
     { "cube", l_cube },
