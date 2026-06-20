@@ -44,9 +44,13 @@ end
 
 local function spawn_wave()
   fx, fy, dir = 0, 0, 1
+  -- Centre the formation on the current (adaptive) screen width so it doesn't
+  -- sit off to one side on wide/fullscreen displays.
+  local form_w = COLS * IW + (COLS - 1) * GAP_X
+  local margin_x = math.max(MARGIN_X, (SCREEN_W - form_w) / 2)
   for r = 0, ROWS - 1 do
     for c = 0, COLS - 1 do
-      local bx = MARGIN_X + c * (IW + GAP_X)
+      local bx = margin_x + c * (IW + GAP_X)
       local by = MARGIN_Y + r * (IH + GAP_Y)
       local id = spawn_at("Invader", bx, by)
       invaders[id] = { bx = bx, by = by }

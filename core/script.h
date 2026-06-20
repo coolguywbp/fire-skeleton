@@ -66,4 +66,9 @@ void script_check_reload(struct Game *G);
 // Close the Lua state and free the Script. Safe to call with G->script == NULL.
 void script_free(struct Game *G);
 
+// Push the current adaptive logical size (G->logical_w/h) into the running
+// script's SCREEN_W / SCREEN_H globals. Called whenever the window is resized so
+// scenes that read SCREEN_W each frame track the new size. No-op if no script.
+void script_update_screen_dims(struct Game *G);
+
 #endif

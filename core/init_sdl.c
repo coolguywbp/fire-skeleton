@@ -61,13 +61,14 @@ bool game_init_sdl(struct Game *G) {
   // refresh rate.
   SDL_SetRenderVSync(G->renderer, 0);
 
-  // Resolution independence: draw into a fixed 1280x960 logical space and let
-  // SDL scale it to whatever the window/canvas/fullscreen size is, preserving
-  // aspect with letterbox bars. Every script coordinate (and Clay's layout) is
-  // in this logical space; SDL_RenderCoordinatesFromWindow maps input back into
-  // it (see game_events), so mouse and touch line up at any size.
-  SDL_SetRenderLogicalPresentation(G->renderer, WINDOW_WIDTH, WINDOW_HEIGHT,
-                                   SDL_LOGICAL_PRESENTATION_LETTERBOX);
+  // Resolution independence: draw into a logical space (fixed height, width
+  // matched to the window aspect) and let SDL scale it to the actual
+  // window/canvas/fullscreen size. Matching the aspect means it fills the screen
+  // with no letterbox bars. Every script coordinate (and Clay's layout) is in
+  // this logical space; SDL_RenderCoordinatesFromWindow maps input back into it
+  // (see game_events), so mouse and touch line up at any size. Recomputed on
+  // every window-size change (game_recompute_presentation).
+  game_recompute_presentation(G);
 
   
   SDL_DisplayID primary_display = SDL_GetPrimaryDisplay();

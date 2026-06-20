@@ -56,7 +56,13 @@ struct Game {
   
   GameState *state;
   struct UI *ui;
-  
+
+  // Adaptive logical render space. Height is fixed (WINDOW_HEIGHT); width tracks
+  // the window's aspect ratio so the world fills the screen edge-to-edge with no
+  // letterbox bars. Recomputed on every window-size change. The Lua SCREEN_W /
+  // SCREEN_H globals and Clay's layout dimensions mirror these.
+  int logical_w, logical_h;
+
   ECS *ecs;
   RenderCommandArray *renderCommands;
   
@@ -84,6 +90,12 @@ struct Game {
 bool game_new(struct Game **game);
 void game_free(struct Game **game);
 bool game_run(struct Game *G);
+
+// Recompute the adaptive logical render space from the current window pixel size
+// (fixed height, aspect-matched width), then push it to the renderer's logical
+// presentation, Clay's layout dimensions and the script's SCREEN_W/H globals.
+// Safe before the UI/script exist (it skips whichever isn't ready yet).
+void game_recompute_presentation(struct Game *G);
 
 typedef enum {
   SCENE_NONE = 0,

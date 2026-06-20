@@ -45,7 +45,10 @@ bool ui_init_clay(struct Game *G) {
   uint64_t totalMemorySize = Clay_MinMemorySize();
   Clay_Arena clayMemory = (Clay_Arena){.memory = SDL_malloc(totalMemorySize),
                                        .capacity = totalMemorySize};
-  Clay_Dimensions dimensions = (Clay_Dimensions){WINDOW_WIDTH, WINDOW_HEIGHT};
+  // Match the adaptive logical space computed in game_init_sdl (fixed height,
+  // aspect-matched width) so the UI lays out across the whole screen.
+  Clay_Dimensions dimensions =
+      (Clay_Dimensions){ (float)G->logical_w, (float)G->logical_h };
   ui->clayDimensions = dimensions;
 
   if (!Clay_Initialize(clayMemory, dimensions,

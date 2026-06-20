@@ -30,7 +30,8 @@
 
 // Keep the SDL window (and the canvas backing store) matched to the browser
 // viewport, so the game fills the whole screen on desktop and mobile. The
-// logical-presentation scaler then fits the 1280x960 world into it (letterbox).
+// resize event then rebuilds the adaptive logical space to the new aspect
+// (game_recompute_presentation), so the world fills the canvas with no bars.
 static EM_BOOL on_web_resize(int type, const EmscriptenUiEvent *e, void *ud) {
   (void)type;
   struct Game *G = ud;
@@ -59,8 +60,8 @@ void update_frame_rate(struct Game *G);
 void mouse_click_events(struct Game *G);
 static void dispatch_key_to_script(struct Game *G, SDL_Scancode sc);
 
-// Map window coordinates to the renderer's logical (1280x960) space, so input
-// lands on the right spot regardless of window size / letterbox bars.
+// Map window coordinates to the renderer's logical space, so input lands on the
+// right spot regardless of window size (the logical space adapts to the aspect).
 static void window_to_logical(struct Game *G, float wx, float wy,
                               float *lx, float *ly) {
   if (!SDL_RenderCoordinatesFromWindow(G->renderer, wx, wy, lx, ly)) {
@@ -326,6 +327,14 @@ void game_events(struct Game *G) {
     case SDL_EVENT_MOUSE_WHEEL:
       Clay_UpdateScrollContainers(true, (Clay_Vector2) { G->event.wheel.x, G->event.wheel.x },G->dtime);
       break;
+    // The drawable changed (fullscreen toggle, resolution change, web canvas
+    // resize): rebuild the adaptive logical space so the world keeps filling the
+    // screen. PIXEL_SIZE_CHANGED fires even for non-resizable windows.
+    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+    case SDL_EVENT_WINDOW_RESIZED:
+      game_recompute_presentation(G);
+      break;
+
     case SDL_EVENT_WINDOW_MOUSE_ENTER:
       // printf("Mouse entered window\n");
       // Reset previous position to current position
@@ -373,6 +382,29 @@ static void dispatch_key_to_script(struct Game *G, SDL_Scancode sc) {
     buf[i] = (char)tolower((unsigned char)name[i]);
   buf[i] = '\0';
   script_on_key(G, buf);
+}
+
+void game_recompute_presentation(struct Game *G) {
+  // Drive the logical space from the actual drawable (pixel) size so HiDPI is
+  // handled too. Fixed reference height, aspect-matched width -> a LETTERBOX
+  // presentation whose logical aspect equals the output aspect produces no bars
+  // and fills the screen edge to edge.
+  int pw = 0, ph = 0;
+  SDL_GetWindowSizeInPixels(G->window, &pw, &ph);
+  if (pw <= 0 || ph <= 0) { pw = WINDOW_WIDTH; ph = WINDOW_HEIGHT; }
+
+  G->logical_h = WINDOW_HEIGHT;
+  G->logical_w = (int)((double)WINDOW_HEIGHT * pw / ph + 0.5);
+  if (G->logical_w < 1) G->logical_w = WINDOW_WIDTH;
+
+  SDL_SetRenderLogicalPresentation(G->renderer, G->logical_w, G->logical_h,
+                                   SDL_LOGICAL_PRESENTATION_LETTERBOX);
+
+  if (G->ui)
+    G->ui->clayDimensions =
+        (Clay_Dimensions){ (float)G->logical_w, (float)G->logical_h };
+
+  script_update_screen_dims(G);
 }
 
 void game_update(struct Game *G) {
