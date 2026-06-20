@@ -23,8 +23,13 @@ bool game_init_sdl(struct Game *G) {
   SDL_WindowFlags wflags = SDL_WINDOW_OPENGL;
 #ifdef __EMSCRIPTEN__
   // The browser canvas is resized to the viewport (see web_fit_canvas);
-  // RESIZABLE lets SDL pick up those size changes.
-  wflags |= SDL_WINDOW_RESIZABLE;
+  // RESIZABLE lets SDL pick up those size changes. HIGH_PIXEL_DENSITY makes the
+  // drawing buffer match the display's device pixels (devicePixelRatio) instead
+  // of CSS pixels, so on HiDPI/retina screens the world is rendered at full
+  // resolution rather than upscaled by the browser (which looked blurry). The
+  // earlier worry about offset input no longer applies: pointer/finger coords
+  // are mapped through SDL_RenderCoordinatesFromWindow (see game_events).
+  wflags |= SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #else
   // Native: high-DPI + mouse capture. Intentionally NOT resizable -- a window
   // with fixed size hints keeps tiling WMs (e.g. Hyprland) floating it at its
