@@ -35,4 +35,8 @@ void cpool_delete(cpool_t *p, hash_t ent);
 // Number of live components.
 size_t cpool_count(cpool_t *p);
 
+// Entity owning the component at dense index `i` (i < cpool_count). Lets callers
+// iterate every entity that has this component, in packed order.
+hash_t cpool_entity_at(cpool_t *p, size_t i);
+
 #endif

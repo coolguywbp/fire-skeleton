@@ -25,6 +25,15 @@ struct SpriteComponent{
   // int currentSpriteIndex;
 };
 
+// Opt-in marker: only entities carrying this component take part in collision
+// detection (so the benchmark's bouncing sprites, which lack it, are skipped).
+// The AABB comes from the entity's TransformComponent. `layer` is reserved for
+// future layer/mask filtering.
+COMPONENT(CollisionComponent)
+struct CollisionComponent {
+  uint32_t layer;
+};
+
 bool ecs_components_register(struct Game *G);
 bool ecs_components_free(struct Game *G);
 

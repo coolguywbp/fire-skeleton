@@ -1,0 +1,52 @@
+#pragma once
+#ifndef SCRIPT_H
+#define SCRIPT_H
+
+#include <stdbool.h>
+
+#include "ecs_core.h"   // Entity
+
+struct Game;
+
+// The Lua scripting layer.
+//
+// Owns a single Lua state created on the main thread. Lua is NOT thread-safe,
+// so every call into Lua (callbacks, the C API exposed to scripts) must happen
+// on the main thread only — never from an ECS worker-pool system.
+//
+// Design split: hot, uniform per-entity work (motion, rendering of thousands of
+// sprites) stays in C systems; scripts drive game-level logic and orchestration
+// (spawning, waves, events) where call frequency is low. Scripts must never be
+// invoked once-per-entity-per-frame on the hot path.
+typedef struct Script Script;
+
+// Create the Lua state, register the C API, then load and run `path` (which
+// registers prefabs and defines the on_* callbacks). Finally invokes the global
+// on_start() callback if the script defines one. Returns false on failure (the
+// caller may choose to continue without scripting).
+bool script_init(struct Game *G, const char *path);
+
+// Run game-level per-frame logic: calls the Lua on_update(dt) callback if
+// present. Invoked ONCE per frame (in the level), never per entity.
+void script_update(struct Game *G, float dt);
+
+// Dispatch a detected collision between two entities to the Lua on_collision(a, b)
+// callback, if the script defines one. Main thread only.
+void script_on_collision(struct Game *G, Entity a, Entity b);
+
+// Dispatch a key press (lowercased SDL key name, e.g. "space", "left") to the
+// Lua on_key(key) callback, if defined. Main thread only.
+void script_on_key(struct Game *G, const char *key);
+
+// Rebuild the script world from its file. The fresh state is loaded first and
+// swapped in only if it loads cleanly; on failure the running game is unchanged.
+bool script_reload(struct Game *G);
+
+// Poll the script file for changes (throttled) and hot-reload when it changes.
+// Call once per frame.
+void script_check_reload(struct Game *G);
+
+// Close the Lua state and free the Script. Safe to call with G->script == NULL.
+void script_free(struct Game *G);
+
+#endif

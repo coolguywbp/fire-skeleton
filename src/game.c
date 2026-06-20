@@ -11,7 +11,11 @@
 #include "benchmark.h"
 
 #include "logger.h"
+#include "script.h"
+#include "collision.h"
 #include "ui.h"
+
+#include <ctype.h>
 
 #include "main.h"
 #include <stdbool.h>
@@ -30,6 +34,7 @@ void game_render(struct Game *G);
 
 void update_frame_rate(struct Game *G);
 void mouse_click_events(struct Game *G);
+static void dispatch_key_to_script(struct Game *G, SDL_Scancode sc);
 
 bool game_new(struct Game **game) {
   *game = calloc(1, sizeof(struct Game));
@@ -98,6 +103,14 @@ bool game_new(struct Game **game) {
     return false;
   }
 
+  // Lua scripting layer. Non-fatal if it fails: the engine still runs (menus,
+  // benchmark), the game logic just won't be scripted.
+  if (!script_init(G, "scripts/main.lua")) {
+    LOG_ERROR("Scripting layer failed to initialize; continuing without it");
+  } else {
+    LOG_DEBUG("(Init 5/5) Scripting OK");
+  }
+
   return true;
 }
 
@@ -114,6 +127,8 @@ void game_free(struct Game **game) {
 
     benchmark_free(G->bench);
     G->bench = NULL;
+
+    script_free(G);
 
     // Game-owned archetypes (registered separately from the system archetypes).
     if (G->archetypes) {
@@ -203,6 +218,8 @@ void game_events(struct Game *G) {
       default:
         break;
       }
+      // Forward gameplay keys to the script layer (level only).
+      dispatch_key_to_script(G, G->event.key.scancode);
       break;
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
       //DEBOUNING CLICKS ???
@@ -261,11 +278,29 @@ void mouse_click_events(struct Game *G){
   ui_click_events(G);
 }
 
+// Forward a key press to the script's on_key callback, but only in the level
+// (menus handle their own keys). The SDL key name is lowercased so scripts can
+// compare against friendly names like "space" or "left".
+static void dispatch_key_to_script(struct Game *G, SDL_Scancode sc) {
+  if (G->state->sceneId != SCENE_LEVEL) return;
+  const char *name = SDL_GetScancodeName(sc);
+  if (!name || !name[0]) return;
+
+  char buf[32];
+  size_t i = 0;
+  for (; name[i] && i < sizeof(buf) - 1; i++)
+    buf[i] = (char)tolower((unsigned char)name[i]);
+  buf[i] = '\0';
+  script_on_key(G, buf);
+}
+
 void game_update(struct Game *G) {
   // The benchmark runs in the level: it starts fresh on entry and tears down
   // its entities on exit.
   if (G->state->sceneId == SCENE_LEVEL) {
     if (!G->bench->active) benchmark_start(G);
+    // Game-level scripted logic: runs once per frame, never per entity.
+    script_update(G, G->dtime);
   } else {
     if (G->bench->active) benchmark_stop(G);
   }
@@ -284,6 +319,9 @@ void game_render(struct Game *G) {
   // The sprite system queues quads into the batch; we flush them in one draw.
   if (G->state->sceneId == SCENE_LEVEL) {
     ECS_Update(G->ecs);
+    // Collision runs after movement so it sees this frame's positions; it may
+    // call into Lua (on_collision), so it must stay on the main thread.
+    collision_update(G);
   }
 
   SDL_Clay_RenderClayCommands(G->clayRendererData, &G->ui->renderCommands);
@@ -297,6 +335,9 @@ static void game_frame(struct Game *G) {
   game_update(G);
   game_render(G);
   update_frame_rate(G);
+
+  // Hot-reload the game scripts when the file changes (designer iteration).
+  script_check_reload(G);
 
   if (G->state->sceneId == SCENE_LEVEL) {
     // In the level the benchmark drives spawning; run uncapped on native.

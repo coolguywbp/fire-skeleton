@@ -132,3 +132,8 @@ size_t cpool_count(cpool_t *p)
 {
     return p->count;
 }
+
+hash_t cpool_entity_at(cpool_t *p, size_t i)
+{
+    return p->dense_ent[i];
+}

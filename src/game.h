@@ -29,6 +29,7 @@ typedef struct{
 } GameState;
 
 typedef struct Benchmark Benchmark;
+typedef struct Script Script;
 
 struct Game {
   SDL_Window *window;
@@ -49,6 +50,7 @@ struct Game {
   SDL_Texture **images;
 
   Benchmark *bench;
+  Script *script;
 
   bool debug;
   bool is_running;

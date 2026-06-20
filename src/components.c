@@ -43,6 +43,16 @@ void SpriteComponent_setGameImageId(SpriteComponent *comp, int gameImageId)
   comp->gameImageId = gameImageId;
 }
 
+COMPONENT_IMPL(CollisionComponent, ComponentStorageNormal)
+void CollisionComponent_new(CollisionComponent *comp)
+{
+  comp->layer = 0;
+}
+void CollisionComponent_free(CollisionComponent *comp)
+{
+  (void)comp; // inline data, nothing to free
+}
+
 
 
 bool ecs_components_register(struct Game *G){
@@ -55,7 +65,9 @@ bool ecs_components_register(struct Game *G){
   assert(res);
   res = REGISTER_COMPONENT(G->ecs, SpriteComponent);
   assert(res);
-  
+  res = REGISTER_COMPONENT(G->ecs, CollisionComponent);
+  assert(res);
+
   return true;
 }
 
