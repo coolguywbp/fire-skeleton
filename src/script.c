@@ -529,6 +529,9 @@ static void register_api(lua_State *L) {
 // it only ever calls the C spawn/destroy functions, never the inner loop.
 // ---------------------------------------------------------------------------
 static const char *ENGINE_PRELUDE =
+  // Let scripts require sibling modules (e.g. a scene's layout file) from the
+  // scripts/ directory: require('menu_view') -> scripts/menu_view.lua.
+  "package.path = 'scripts/?.lua;' .. package.path\n"
   "local running = {}\n"                     // { {co=thread, timer=seconds}, ... }
   "function wait(sec)\n"
   "  coroutine.yield(sec or 0)\n"
@@ -574,6 +577,62 @@ static const char *ENGINE_PRELUDE =
   "      i = i + 1\n"
   "    end\n"
   "  end\n"
+  "end\n"
+  // -------------------------------------------------------------------------
+  // Declarative view runtime
+  //
+  // mount(spec) turns a layout tree + stylesheet (spec.tree / spec.styles)
+  // into a view. The scene binds button ids with view:on(id, fn) and emits
+  // the tree each frame with view:render(); the walker below maps each node
+  // to the immediate-mode ui.* toolkit. This keeps structure/look (the layout
+  // file) separate from behavior (the scene). Lua-side: the menu is not a hot
+  // path, and it only ever calls the same ui.* C functions a handful of times.
+  // -------------------------------------------------------------------------
+  "local function merge(...)\n"
+  "  local out = {}\n"
+  "  for i = 1, select('#', ...) do\n"
+  "    local t = select(i, ...)\n"
+  "    if t then for k, v in pairs(t) do out[k] = v end end\n"
+  "  end\n"
+  "  return out\n"
+  "end\n"
+  "local View = {}\n"
+  "View.__index = View\n"
+  "function View:on(id, fn) self.handlers[id] = fn return self end\n"
+  // A node's final style: stylesheet[class] cascaded with any inline `style`.
+  "local function resolve(self, n)\n"
+  "  local base = n.class and self.styles[n.class] or nil\n"
+  "  if n.style then return merge(base, n.style) end\n"
+  "  return base or {}\n"
+  "end\n"
+  // Emit one node (and its children) into the current Clay context.
+  "local function draw(self, n)\n"
+  "  local tag = n.tag\n"
+  "  local st = resolve(self, n)\n"
+  "  if tag == 'panel' or tag == 'list' then\n"
+  "    ui.panel(st, function()\n"
+  "      for _, c in ipairs(n.children or {}) do draw(self, c) end\n"
+  "    end)\n"
+  "  elseif tag == 'label' then\n"
+  "    ui.label(n.text or '', st)\n"
+  "  elseif tag == 'button' then\n"
+  "    if ui.button(n.id or 'btn', n.text or '', st) then\n"
+  "      local fn = n.id and self.handlers[n.id]\n"
+  "      if fn then fn() end\n"
+  "    end\n"
+  "  elseif tag == 'image' then\n"
+  "    ui.image(n.image or 0, n.x or 0, n.y or 0, n.w or 0, n.h or 0)\n"
+  "  elseif tag == 'text' then\n"
+  "    ui.text(n.x or 0, n.y or 0, n.text or '', st)\n"
+  "  elseif tag == 'rect' then\n"
+  "    ui.rect(n.x or 0, n.y or 0, n.w or 0, n.h or 0, st)\n"
+  "  end\n"
+  "end\n"
+  "function View:render()\n"
+  "  for _, n in ipairs(self.tree) do draw(self, n) end\n"
+  "end\n"
+  "function mount(spec)\n"
+  "  return setmetatable({ tree = spec.tree or {}, styles = spec.styles or {}, handlers = {} }, View)\n"
   "end\n";
 
 // ---------------------------------------------------------------------------
