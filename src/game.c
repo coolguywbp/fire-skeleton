@@ -14,6 +14,7 @@
 #include "logger.h"
 #include "script.h"
 #include "collision.h"
+#include "ecs_entity.h"
 #include "ui.h"
 #include "ui_lua.h"
 

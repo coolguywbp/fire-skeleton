@@ -26,6 +26,12 @@ bool ECS_EntityExists(ECS *ecs, Entity entity);
 size_t ECS_EntityCount(ECS *ecs);
 
 /*
+	Deletes every entity in the ECS. Used on scene changes to start from a clean
+	slate so nothing leaks between scenes.
+*/
+void ECS_DeleteAllEntities(ECS *ecs);
+
+/*
 	Generate a string representation of an entity, suitable for display to the
 	user.
 

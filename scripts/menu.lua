@@ -19,7 +19,7 @@ local THEME = {
   titlebox = { width = "grow", height = "grow" },
   title    = { size = 130, line = 120, font = 1 },
   -- The 300px-wide list; buttons grow to fill its height, text left-aligned.
-  list     = { width = 300, height = "grow", dir = "column", gap = 16, pad = 16 },
+  list     = { width = 300, height = "grow", dir = "column", gap = 0, pad = 0 },
   item     = { size = 54, height = "grow", align = "left" },
 }
 

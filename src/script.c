@@ -333,7 +333,7 @@ static int l_spawn_at(lua_State *L) {
 static int l_destroy(lua_State *L) {
   Script *s = get_script(L);
   Entity e = (Entity)luaL_checkinteger(L, 1);
-  if (ECS_EntityExists(s->G->ecs, e)) ECS_EntityDelete(s->G->ecs, e);
+  ECS_EntityDelete(s->G->ecs, e);   // idempotent; no existence gate
   prefab_untrack(s, e);
   return 0;
 }
@@ -381,7 +381,7 @@ static int l_despawn(lua_State *L) {
   lua_Integer removed = 0;
   while (n-- > 0 && p->ent_count > 0) {
     Entity e = p->ents[--p->ent_count];
-    if (ECS_EntityExists(s->G->ecs, e)) ECS_EntityDelete(s->G->ecs, e);
+    ECS_EntityDelete(s->G->ecs, e);   // idempotent; never gate on ECS_EntityExists
     removed++;
   }
   lua_pushinteger(L, removed);
@@ -602,8 +602,7 @@ static void destroy_tracked_entities(Script *s) {
   for (size_t pi = 0; pi < s->prefab_count; pi++) {
     Prefab *p = &s->prefabs[pi];
     for (size_t i = 0; i < p->ent_count; i++)
-      if (ECS_EntityExists(s->G->ecs, p->ents[i]))
-        ECS_EntityDelete(s->G->ecs, p->ents[i]);
+      ECS_EntityDelete(s->G->ecs, p->ents[i]);  // idempotent; no existence gate
   }
 }
 
@@ -700,12 +699,28 @@ bool script_init(struct Game *G) {
 }
 
 bool script_load(struct Game *G, const char *path) {
-  if (script_swap(G, path)) {
-    LOG_INFO("Loaded script: %s", path);
-    return true;
+  // A scene change starts from a clean slate: tear down the old script and WIPE
+  // EVERY entity (not just the ones it tracked) before the new scene spawns, so
+  // nothing leaks between scenes (e.g. benchmark sprites into the level).
+  if (G->script) {
+    free_script_struct(G->script);
+    G->script = NULL;
   }
-  LOG_ERROR("Failed to load script: %s", path);
-  return false;
+  ECS_DeleteAllEntities(G->ecs);
+
+  // The HUD status line is sticky (a script sets it once and it persists until
+  // overwritten). Clear it on a scene change so a line left by the previous
+  // scene (e.g. the benchmark's "ramping up...") doesn't bleed into the next.
+  G->hud_text[0] = '\0';
+
+  Script *fresh = script_boot(G, path);
+  if (!fresh) {
+    LOG_ERROR("Failed to load script: %s", path);
+    return false;
+  }
+  G->script = fresh;
+  LOG_INFO("Loaded script: %s", path);
+  return true;
 }
 
 const char *script_current_path(struct Game *G) {

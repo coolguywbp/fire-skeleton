@@ -154,6 +154,38 @@ void Manager_DeleteEntity(ECS *ecs, Entity entity)
 	ecs->update_systems_dirty = true;
 }
 
+void ECS_DeleteAllEntities(ECS *ecs)
+{
+	assert(ecs);
+
+	// Snapshot every entity that owns a component, then delete them. An entity
+	// can appear under several component pools, but Manager_DeleteEntity is
+	// idempotent, so duplicates in the snapshot are harmless. We snapshot before
+	// deleting because deletion mutates the pools we iterate.
+	size_t total = 0;
+	HT_FOR(ecs->cm_types) {
+		ComponentType *ct = ht_get(ecs->cm_types, idx);
+		total += cpool_count(ct->components);
+	}
+	if (total == 0) return;
+
+	Entity *ids = malloc(total * sizeof(Entity));
+	if (!ids) return;
+
+	size_t m = 0;
+	HT_FOR(ecs->cm_types) {
+		ComponentType *ct = ht_get(ecs->cm_types, idx);
+		size_t n = cpool_count(ct->components);
+		for (size_t i = 0; i < n; i++)
+			ids[m++] = cpool_entity_at(ct->components, i);
+	}
+
+	for (size_t i = 0; i < m; i++)
+		Manager_DeleteEntity(ecs, ids[i]);
+
+	free(ids);
+}
+
 /* -------------------------------------------------------------------------- */
 
 bool Manager_RegisterSystem(ECS *ecs, System *info)
