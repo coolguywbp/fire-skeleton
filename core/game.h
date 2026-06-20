@@ -27,6 +27,16 @@ typedef struct{
   uint64_t lastClick;
 } Mouse;
 
+// Active touch points, in logical (1280x960) coordinates. Filled from SDL
+// finger events and queried by scripts (touch_count/touch_pos) for the
+// touch-driven demos. 10 covers any realistic multi-touch.
+#define MAX_TOUCHES 10
+typedef struct {
+  SDL_FingerID id;
+  float x, y;
+  bool active;
+} TouchPoint;
+
 typedef struct{
   int sceneId;
   int mode;     // which gameplay script the level runs (see GameMode)
@@ -42,6 +52,7 @@ struct Game {
   
   SDL_Event event;
   Mouse *mouse;
+  TouchPoint touches[MAX_TOUCHES];
   
   GameState *state;
   struct UI *ui;
@@ -79,6 +90,7 @@ typedef enum {
   SCENE_MAIN_MENU,
   SCENE_MAIN_MENU_OPTIONS,
   SCENE_MAIN_MENU_DEMOS,
+  SCENE_MAIN_MENU_VIDEO,
   SCENE_LEVEL,
   SCENE_SHOP,
   SCENE_MAX

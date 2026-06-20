@@ -2,22 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <!-- viewport-fit=cover + no user scaling: the canvas owns the whole screen,
+       including under notches, and touches drive the game instead of zooming. -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>Fire Skeleton Invader</title>
   <style>
     html, body {
       margin: 0; padding: 0; width: 100%; height: 100%;
       background: #000; overflow: hidden;
     }
-    body { display: flex; align-items: center; justify-content: center; }
-    /* The canvas renders at the game's native 1280x960 (4:3) buffer. With
-       high-DPI disabled on the web build the buffer matches the element, so a
-       plain uniform max-* fit keeps the aspect (no squish) and maps the mouse
-       1:1. (An aspect-ratio + width/height:auto combo collapsed it to 0 height
-       -> black screen, so keep this simple.) */
+    /* The canvas fills the viewport on desktop and mobile. The C side keeps the
+       canvas backing store matched to the viewport (see web_fit_canvas), and the
+       renderer letterboxes the fixed 1280x960 world into it -- so the game is
+       always full-screen with no squish, at any size or orientation.
+       touch-action:none stops the browser from scrolling/zooming on drags. */
     canvas#canvas {
       display: block; border: 0; outline: none; background: #000;
-      max-width: 100%; max-height: 100%;
+      width: 100vw; height: 100vh;
+      touch-action: none; -webkit-tap-highlight-color: transparent;
     }
   </style>
 </head>

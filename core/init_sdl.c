@@ -21,7 +21,16 @@ bool game_init_sdl(struct Game *G) {
   // (SDL maps them to the scaled buffer). Mouse capture is also meaningless in
   // a browser. Keep both only on the native build.
   SDL_WindowFlags wflags = SDL_WINDOW_OPENGL;
-#ifndef __EMSCRIPTEN__
+#ifdef __EMSCRIPTEN__
+  // The browser canvas is resized to the viewport (see web_fit_canvas);
+  // RESIZABLE lets SDL pick up those size changes.
+  wflags |= SDL_WINDOW_RESIZABLE;
+#else
+  // Native: high-DPI + mouse capture. Intentionally NOT resizable -- a window
+  // with fixed size hints keeps tiling WMs (e.g. Hyprland) floating it at its
+  // native 1280x960 (so it stays crisp, 1:1, not stretched into a tile). The
+  // VIDEO menu still changes resolution/fullscreen programmatically, which
+  // doesn't require the user-resizable flag.
   wflags |= SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_MOUSE_CAPTURE;
 #endif
   G->window = SDL_CreateWindow(WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT, wflags);
@@ -46,6 +55,14 @@ bool game_init_sdl(struct Game *G) {
   // Disable vsync so the benchmark can measure frame rates above the monitor's
   // refresh rate.
   SDL_SetRenderVSync(G->renderer, 0);
+
+  // Resolution independence: draw into a fixed 1280x960 logical space and let
+  // SDL scale it to whatever the window/canvas/fullscreen size is, preserving
+  // aspect with letterbox bars. Every script coordinate (and Clay's layout) is
+  // in this logical space; SDL_RenderCoordinatesFromWindow maps input back into
+  // it (see game_events), so mouse and touch line up at any size.
+  SDL_SetRenderLogicalPresentation(G->renderer, WINDOW_WIDTH, WINDOW_HEIGHT,
+                                   SDL_LOGICAL_PRESENTATION_LETTERBOX);
 
   
   SDL_DisplayID primary_display = SDL_GetPrimaryDisplay();

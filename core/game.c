@@ -26,6 +26,26 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <emscripten/html5.h>
+
+// Keep the SDL window (and the canvas backing store) matched to the browser
+// viewport, so the game fills the whole screen on desktop and mobile. The
+// logical-presentation scaler then fits the 1280x960 world into it (letterbox).
+static EM_BOOL on_web_resize(int type, const EmscriptenUiEvent *e, void *ud) {
+  (void)type;
+  struct Game *G = ud;
+  if (e->windowInnerWidth > 0 && e->windowInnerHeight > 0)
+    SDL_SetWindowSize(G->window, e->windowInnerWidth, e->windowInnerHeight);
+  return EM_TRUE;
+}
+
+static void web_fit_canvas(struct Game *G) {
+  int vw = EM_ASM_INT({ return window.innerWidth;  });
+  int vh = EM_ASM_INT({ return window.innerHeight; });
+  if (vw > 0 && vh > 0) SDL_SetWindowSize(G->window, vw, vh);
+  emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, G, EM_FALSE,
+                                 on_web_resize);
+}
 #endif
 
 void game_render_color(struct Game *G);
@@ -38,6 +58,30 @@ void game_render(struct Game *G);
 void update_frame_rate(struct Game *G);
 void mouse_click_events(struct Game *G);
 static void dispatch_key_to_script(struct Game *G, SDL_Scancode sc);
+
+// Map window coordinates to the renderer's logical (1280x960) space, so input
+// lands on the right spot regardless of window size / letterbox bars.
+static void window_to_logical(struct Game *G, float wx, float wy,
+                              float *lx, float *ly) {
+  if (!SDL_RenderCoordinatesFromWindow(G->renderer, wx, wy, lx, ly)) {
+    *lx = wx; *ly = wy;   // fall back to raw coords if the query fails
+  }
+}
+
+// Record/refresh/drop an active touch (logical coords), keyed by finger id.
+static void touch_set(struct Game *G, SDL_FingerID id, float x, float y, bool down) {
+  int free_slot = -1;
+  for (int i = 0; i < MAX_TOUCHES; i++) {
+    if (G->touches[i].active && G->touches[i].id == id) {
+      if (down) { G->touches[i].x = x; G->touches[i].y = y; }
+      else      { G->touches[i].active = false; }
+      return;
+    }
+    if (free_slot < 0 && !G->touches[i].active) free_slot = i;
+  }
+  if (down && free_slot >= 0)
+    G->touches[free_slot] = (TouchPoint){ .id = id, .x = x, .y = y, .active = true };
+}
 
 bool game_new(struct Game **game) {
   *game = calloc(1, sizeof(struct Game));
@@ -216,7 +260,7 @@ void game_events(struct Game *G) {
       // Forward gameplay keys to the script layer (level only).
       dispatch_key_to_script(G, G->event.key.scancode);
       break;
-    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+    case SDL_EVENT_MOUSE_BUTTON_DOWN: {
       //DEBOUNING CLICKS ???
       clickDelta = currentTime - G->mouse->lastClick;
       double difference = clickDelta - G->mouse->debounceDelay;
@@ -231,23 +275,54 @@ void game_events(struct Game *G) {
       };
 
       break;
+    }
 
     case SDL_EVENT_MOUSE_BUTTON_UP:
-      Clay_SetPointerState((Clay_Vector2) { G->mouse->x, G->mouse->y }, false); 
+      Clay_SetPointerState((Clay_Vector2) { G->mouse->x, G->mouse->y }, false);
       break;
-      
-    case SDL_EVENT_MOUSE_MOTION:
+
+    case SDL_EVENT_MOUSE_MOTION: {
       // Always update on motion. The previous gate compared prev-vs-current
       // instead of event-vs-current, so a single duplicate-position event left
       // prevx==x && prevy==y and froze all further updates (Clay stopped
       // receiving the pointer position, killing hover and clicks) until a
       // window re-enter reset prev. Just forward every motion event.
+      float lx, ly;
+      window_to_logical(G, G->event.motion.x, G->event.motion.y, &lx, &ly);
       G->mouse->prevx = G->mouse->x;
       G->mouse->prevy = G->mouse->y;
-      G->mouse->x = G->event.motion.x;
-      G->mouse->y = G->event.motion.y;
+      G->mouse->x = (int)lx;
+      G->mouse->y = (int)ly;
       Clay_SetPointerState((Clay_Vector2) { G->mouse->x, G->mouse->y }, false);
       break;
+    }
+
+    // Touch: a finger acts like the mouse pointer (drives Clay hover/clicks and
+    // ui.button) and is also recorded for the touch-driven demos. Finger coords
+    // are normalized to the window, so scale by the window size, then map into
+    // logical space. SDL also synthesizes mouse events from touches on some
+    // platforms, but handling fingers explicitly keeps multi-touch and the
+    // demos' touch_pos() working on mobile/web.
+    case SDL_EVENT_FINGER_DOWN:
+    case SDL_EVENT_FINGER_MOTION:
+    case SDL_EVENT_FINGER_UP: {
+      int ww, wh;
+      SDL_GetWindowSize(G->window, &ww, &wh);
+      float lx, ly;
+      window_to_logical(G, G->event.tfinger.x * ww, G->event.tfinger.y * wh, &lx, &ly);
+      bool down = (G->event.type != SDL_EVENT_FINGER_UP);
+
+      G->mouse->x = (int)lx;
+      G->mouse->y = (int)ly;
+      touch_set(G, G->event.tfinger.fingerID, lx, ly, down);
+      Clay_SetPointerState((Clay_Vector2) { lx, ly }, down);
+
+      if (G->event.type == SDL_EVENT_FINGER_DOWN) {
+        mouse_click_events(G);
+        ui_lua_note_click();   // a tap registers as a button press
+      }
+      break;
+    }
     case SDL_EVENT_MOUSE_WHEEL:
       Clay_UpdateScrollContainers(true, (Clay_Vector2) { G->event.wheel.x, G->event.wheel.x },G->dtime);
       break;
@@ -298,6 +373,7 @@ void game_update(struct Game *G) {
     case SCENE_MAIN_MENU:
     case SCENE_MAIN_MENU_OPTIONS:
     case SCENE_MAIN_MENU_DEMOS:
+    case SCENE_MAIN_MENU_VIDEO:
       want = "scripts/menu.lua";
       break;
     case SCENE_LEVEL:
@@ -375,6 +451,7 @@ bool game_run(struct Game *G) {
   // The browser owns the loop; hand it our per-frame callback. fps=0 means
   // "use requestAnimationFrame"; the 1 unwinds the C stack so this call does
   // not return and G stays alive for the lifetime of the page.
+  web_fit_canvas(G);
   emscripten_set_main_loop_arg(game_frame_em, G, 0, 1);
 #else
   while (G->is_running) {

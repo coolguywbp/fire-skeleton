@@ -26,6 +26,10 @@
 #define SHOW_FPS
 
 #define WINDOW_TITLE "FIRE SKELETON INVADERS"
+// Logical (design) resolution. The world, UI and all scripts are authored
+// against this fixed 4:3 space; the renderer scales it to the actual window or
+// fullscreen size via SDL_SetRenderLogicalPresentation (letterbox), so the game
+// is resolution-independent. WINDOW_* doubles as the initial window size.
 #define WINDOW_WIDTH 1280
 #define WINDOW_HEIGHT 960
 

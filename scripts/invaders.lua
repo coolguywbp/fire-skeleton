@@ -7,6 +7,7 @@
 -- game-over screen are drawn with the immediate-mode `ui` toolkit in on_ui().
 --
 -- Controls: Left/Right or A/D to move, Space to shoot (hold to autofire).
+-- Touch (mobile/web): drag to move the ship; holding the screen autofires.
 
 -- Tuning ---------------------------------------------------------------------
 local IW, IH       = 48, 48        -- invader size
@@ -108,18 +109,25 @@ end
 function on_update(dt)
   if state ~= "play" then return end
 
-  -- Player (held-key movement): arrow keys or A/D.
-  if key_down("left")  or key_down("a") then px = px - PLAYER_SPEED * dt end
-  if key_down("right") or key_down("d") then px = px + PLAYER_SPEED * dt end
+  -- Player movement. Touch (if any) takes priority: the ship tracks the first
+  -- finger's x. Otherwise held keys move it (arrows or A/D).
+  local touching = touch_count() > 0
+  if touching then
+    local tx = touch_pos(1)            -- logical x of the first active touch
+    if tx then px = tx - PLAYER_W / 2 end
+  else
+    if key_down("left")  or key_down("a") then px = px - PLAYER_SPEED * dt end
+    if key_down("right") or key_down("d") then px = px + PLAYER_SPEED * dt end
+  end
   if px < 0 then px = 0 end
   if px > SCREEN_W - PLAYER_W then px = SCREEN_W - PLAYER_W end
   set_pos(player, px, py)
 
-  -- Shooting: hold Space to autofire on a cooldown. Driven from the live key
-  -- state (not on_key) so it can't be interrupted when another key's OS repeat
-  -- takes over the repeat stream while Space stays held.
+  -- Shooting: hold Space (or hold a touch) to autofire on a cooldown. Driven
+  -- from the live input state (not on_key) so it can't be interrupted when
+  -- another key's OS repeat takes over the repeat stream while Space is held.
   if shoot_cd > 0 then shoot_cd = shoot_cd - dt end
-  if key_down("space") and shoot_cd <= 0 then
+  if (key_down("space") or touching) and shoot_cd <= 0 then
     local bx, by = px + PLAYER_W / 2 - 5, py - 28
     local id = spawn_at("Bullet", bx, by)
     bullets[id] = { x = bx, y = by }

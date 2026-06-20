@@ -292,6 +292,26 @@ SDL_Rect currentClippingRectangle;
 void SDL_Clay_RenderClayCommands(Clay_SDL3RendererData *rendererData,
                                  Clay_RenderCommandArray *rcommands) {
   g_frame++;   // for the text-cache mark-and-sweep at the end of this frame
+
+  // Logical->output scale of the letterbox presentation. Geometry is GPU-scaled
+  // (stays crisp), but glyph atlases are textures: rasterized at the logical
+  // font size they'd be upscaled and blur. So we rasterize text at the *device*
+  // pixel size (fontSize * pres_scale) and compensate with a render scale of
+  // 1/pres_scale, which composes with the presentation transform (see the text
+  // case). At native size pres_scale == 1 and this is a no-op.
+  float pres_scale = 1.0f;
+  {
+    int lw = 0, lh = 0;
+    SDL_RendererLogicalPresentation mode;
+    SDL_FRect pres;
+    if (SDL_GetRenderLogicalPresentation(rendererData->renderer, &lw, &lh, &mode) &&
+        lw > 0 && mode != SDL_LOGICAL_PRESENTATION_DISABLED &&
+        SDL_GetRenderLogicalPresentationRect(rendererData->renderer, &pres) &&
+        pres.w > 0) {
+      pres_scale = pres.w / (float)lw;
+    }
+  }
+
   for (size_t i = 0; i < rcommands->length; i++) {
     Clay_RenderCommand *rcmd = Clay_RenderCommandArray_Get(rcommands, i);
     const Clay_BoundingBox bounding_box = rcmd->boundingBox;
@@ -318,7 +338,14 @@ void SDL_Clay_RenderClayCommands(Clay_SDL3RendererData *rendererData,
       Clay_TextRenderData *config = &rcmd->renderData.text;
       const char *chars = config->stringContents.chars;
       size_t len = config->stringContents.length;
-      uint64_t key = text_key(config->fontId, config->fontSize, chars, len);
+
+      // Rasterize at device pixels so text stays sharp when the world is
+      // scaled. Keying the cache on the device size means a resolution change
+      // naturally re-rasterizes at the new size instead of reusing a stale,
+      // blurry atlas.
+      int px_size = (int)(config->fontSize * pres_scale + 0.5f);
+      if (px_size < 1) px_size = 1;
+      uint64_t key = text_key(config->fontId, (float)px_size, chars, len);
 
       // Look the string up in the cache; note a reusable slot while scanning.
       TTF_Text *text = NULL;
@@ -339,9 +366,10 @@ void SDL_Clay_RenderClayCommands(Clay_SDL3RendererData *rendererData,
 
       bool cached = (text != NULL);
       if (!text) {
-        // Miss: rasterize once against the (never-resized) sized font.
+        // Miss: rasterize once against the (never-resized) sized font, at the
+        // device pixel size for crispness when scaled.
         TTF_Font *font = SDL_Clay_GetSizedFont(rendererData, config->fontId,
-                                               config->fontSize);
+                                               px_size);
         text = TTF_CreateText(rendererData->textEngine, font, chars, len);
         if (text) {
           int slot = (free_slot >= 0) ? free_slot : stale_slot;
@@ -358,7 +386,19 @@ void SDL_Clay_RenderClayCommands(Clay_SDL3RendererData *rendererData,
       if (text) {
         TTF_SetTextColor(text, config->textColor.r, config->textColor.g,
                          config->textColor.b, config->textColor.a);
-        TTF_DrawRendererText(text, rect.x, rect.y);
+        if (pres_scale != 1.0f) {
+          // The glyphs are pres_scale x bigger than their logical size; a
+          // render scale of 1/pres_scale shrinks them back, and since it
+          // composes on top of the presentation scale the net output size is
+          // exactly the logical fontSize -- but drawn from a native-res atlas.
+          // Positions are in this scaled space, hence rect.* * pres_scale.
+          float inv = 1.0f / pres_scale;
+          SDL_SetRenderScale(rendererData->renderer, inv, inv);
+          TTF_DrawRendererText(text, rect.x * pres_scale, rect.y * pres_scale);
+          SDL_SetRenderScale(rendererData->renderer, 1.0f, 1.0f);
+        } else {
+          TTF_DrawRendererText(text, rect.x, rect.y);
+        }
         if (!cached) TTF_DestroyText(text);   // cache saturated: don't leak
       }
     } break;

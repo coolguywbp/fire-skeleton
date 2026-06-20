@@ -452,13 +452,14 @@ static int l_time(lua_State *L) {
   return 1;
 }
 
-// scene() -> "menu" | "options" | "demos" | "play" | "benchmark" | "slots"
+// scene() -> "menu" | "options" | "demos" | "video" | "play" | "benchmark" | "slots"
 static int l_scene(lua_State *L) {
   struct Game *G = get_script(L)->G;
   const char *n = "menu";
   switch (G->state->sceneId) {
     case SCENE_MAIN_MENU_OPTIONS: n = "options"; break;
     case SCENE_MAIN_MENU_DEMOS:   n = "demos";   break;
+    case SCENE_MAIN_MENU_VIDEO:   n = "video";   break;
     case SCENE_LEVEL:
       n = (G->state->mode == MODE_BENCHMARK) ? "benchmark"
         : (G->state->mode == MODE_SLOTS)     ? "slots"
@@ -471,13 +472,14 @@ static int l_scene(lua_State *L) {
 }
 
 // goto_scene(name) -- navigate.
-// name: "menu"|"options"|"demos"|"play"|"benchmark"|"slots"
+// name: "menu"|"options"|"demos"|"video"|"play"|"benchmark"|"slots"
 static int l_goto_scene(lua_State *L) {
   struct Game *G = get_script(L)->G;
   const char *name = luaL_checkstring(L, 1);
   if      (!strcmp(name, "menu"))      G->state->sceneId = SCENE_MAIN_MENU;
   else if (!strcmp(name, "options"))   G->state->sceneId = SCENE_MAIN_MENU_OPTIONS;
   else if (!strcmp(name, "demos"))     G->state->sceneId = SCENE_MAIN_MENU_DEMOS;
+  else if (!strcmp(name, "video"))     G->state->sceneId = SCENE_MAIN_MENU_VIDEO;
   else if (!strcmp(name, "play"))      { G->state->mode = MODE_INVADERS;  G->state->sceneId = SCENE_LEVEL; }
   else if (!strcmp(name, "benchmark")) { G->state->mode = MODE_BENCHMARK; G->state->sceneId = SCENE_LEVEL; }
   else if (!strcmp(name, "slots"))     { G->state->mode = MODE_SLOTS;     G->state->sceneId = SCENE_LEVEL; }
@@ -489,6 +491,69 @@ static int l_goto_scene(lua_State *L) {
 static int l_quit(lua_State *L) {
   get_script(L)->G->is_running = false;
   return 0;
+}
+
+// --- Touch (logical coords) -------------------------------------------------
+// touch_count() -> number of active touch points.
+static int l_touch_count(lua_State *L) {
+  struct Game *G = get_script(L)->G;
+  int n = 0;
+  for (int i = 0; i < MAX_TOUCHES; i++) if (G->touches[i].active) n++;
+  lua_pushinteger(L, n);
+  return 1;
+}
+
+// touch_pos(i) -> x, y of the i-th active touch (1-based), or nil if none.
+static int l_touch_pos(lua_State *L) {
+  struct Game *G = get_script(L)->G;
+  int want = (int)luaL_checkinteger(L, 1);
+  int n = 0;
+  for (int i = 0; i < MAX_TOUCHES; i++) {
+    if (!G->touches[i].active) continue;
+    if (++n == want) {
+      lua_pushnumber(L, G->touches[i].x);
+      lua_pushnumber(L, G->touches[i].y);
+      return 2;
+    }
+  }
+  return 0;
+}
+
+// --- Video settings ---------------------------------------------------------
+// set_fullscreen(on) -- toggle borderless desktop fullscreen.
+static int l_set_fullscreen(lua_State *L) {
+  struct Game *G = get_script(L)->G;
+  SDL_SetWindowFullscreen(G->window, lua_toboolean(L, 1));
+  return 0;
+}
+
+// is_fullscreen() -> bool.
+static int l_is_fullscreen(lua_State *L) {
+  struct Game *G = get_script(L)->G;
+  lua_pushboolean(L, (SDL_GetWindowFlags(G->window) & SDL_WINDOW_FULLSCREEN) != 0);
+  return 1;
+}
+
+// set_window_size(w, h) -- leave fullscreen, resize and re-center the window.
+// The world is unaffected (logical presentation rescales it to the new size).
+static int l_set_window_size(lua_State *L) {
+  struct Game *G = get_script(L)->G;
+  int w = (int)luaL_checkinteger(L, 1);
+  int h = (int)luaL_checkinteger(L, 2);
+  SDL_SetWindowFullscreen(G->window, false);
+  SDL_SetWindowSize(G->window, w, h);
+  SDL_SetWindowPosition(G->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+  return 0;
+}
+
+// get_window_size() -> w, h of the current window (not the logical size).
+static int l_get_window_size(lua_State *L) {
+  struct Game *G = get_script(L)->G;
+  int w, h;
+  SDL_GetWindowSize(G->window, &w, &h);
+  lua_pushinteger(L, w);
+  lua_pushinteger(L, h);
+  return 2;
 }
 
 static void register_api(lua_State *L) {
@@ -510,6 +575,12 @@ static void register_api(lua_State *L) {
     {"scene",      l_scene},
     {"goto_scene", l_goto_scene},
     {"quit",       l_quit},
+    {"touch_count",     l_touch_count},
+    {"touch_pos",       l_touch_pos},
+    {"set_fullscreen",  l_set_fullscreen},
+    {"is_fullscreen",   l_is_fullscreen},
+    {"set_window_size", l_set_window_size},
+    {"get_window_size", l_get_window_size},
     {NULL, NULL}
   };
   for (const luaL_Reg *r = fns; r->name; r++) {
