@@ -50,6 +50,19 @@
     @keyframes bob { 0%, 100% { transform: translateY(-20px); }
                      50%      { transform: translateY(20px);  } }
   </style>
+  <script type="text/javascript">
+    // SDL (emscripten) attaches a keyboard handler that preventDefault()s
+    // keydowns, which swallows the browser's reload shortcuts (F5, Ctrl/Cmd+R,
+    // Ctrl+Shift+R) -- so refreshing the page did nothing. Catch those combos
+    // in the capture phase on window (before SDL's handler) and stop them from
+    // reaching it, letting the browser perform its native (cache-bypassing)
+    // reload. The game never uses these keys, so nothing is lost.
+    window.addEventListener('keydown', function (e) {
+      var isReload = e.key === 'F5' ||
+                     ((e.ctrlKey || e.metaKey) && (e.key === 'r' || e.key === 'R'));
+      if (isReload) e.stopImmediatePropagation();
+    }, true);
+  </script>
 </head>
 <body>
   <div id="loading">
