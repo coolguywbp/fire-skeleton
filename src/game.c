@@ -8,7 +8,8 @@
 
 #include "load_m.h"
 #include "archetypes.h"
-#include "benchmark.h"
+
+#include <string.h>
 
 #include "logger.h"
 #include "script.h"
@@ -95,17 +96,9 @@ bool game_new(struct Game **game) {
 
   srand((unsigned)time(NULL));
 
-  // The benchmark owns entity spawning: it starts at 1 object on entering the
-  // level and adapts the count to the frame rate.
-  G->bench = benchmark_new();
-  if (!G->bench) {
-    fprintf(stderr, "Error allocating Benchmark.\n");
-    return false;
-  }
-
-  // Lua scripting layer. Non-fatal if it fails: the engine still runs (menus,
-  // benchmark), the game logic just won't be scripted.
-  if (!script_init(G, "scripts/main.lua")) {
+  // Lua scripting layer (idle state). Gameplay scripts are loaded on demand when
+  // a mode is entered from the menu. Non-fatal if it fails to initialize.
+  if (!script_init(G)) {
     LOG_ERROR("Scripting layer failed to initialize; continuing without it");
   } else {
     LOG_DEBUG("(Init 5/5) Scripting OK");
@@ -124,9 +117,6 @@ void game_free(struct Game **game) {
       ECS_Delete(G->ecs);
       G->ecs = NULL;
     }
-
-    benchmark_free(G->bench);
-    G->bench = NULL;
 
     script_free(G);
 
@@ -295,14 +285,16 @@ static void dispatch_key_to_script(struct Game *G, SDL_Scancode sc) {
 }
 
 void game_update(struct Game *G) {
-  // The benchmark runs in the level: it starts fresh on entry and tears down
-  // its entities on exit.
+  // In the level, ensure this scene's gameplay script is loaded, then drive its
+  // per-frame logic. Leaving the level unloads it and clears the HUD.
   if (G->state->sceneId == SCENE_LEVEL) {
-    if (!G->bench->active) benchmark_start(G);
+    const char *want = "scripts/benchmark.lua";
+    const char *cur = script_current_path(G);
+    if (!cur || strcmp(cur, want) != 0) script_load(G, want);
     // Game-level scripted logic: runs once per frame, never per entity.
     script_update(G, G->dtime);
-  } else {
-    if (G->bench->active) benchmark_stop(G);
+  } else if (script_current_path(G)) {
+    script_unload(G);
   }
 
   // Per-scene logic that must run before layout could go here. ECS updates run
@@ -339,13 +331,11 @@ static void game_frame(struct Game *G) {
   // Hot-reload the game scripts when the file changes (designer iteration).
   script_check_reload(G);
 
-  if (G->state->sceneId == SCENE_LEVEL) {
-    // In the level the benchmark drives spawning; run uncapped on native.
-    benchmark_update(G);
-  } else {
+  // The level runs uncapped (the benchmark needs to measure true frame rate);
+  // the menus are capped to avoid spinning the CPU.
+  if (G->state->sceneId != SCENE_LEVEL) {
 #ifndef __EMSCRIPTEN__
-    // Cap the menus at ~60 FPS to avoid spinning the CPU. On the web the
-    // browser paces frames (requestAnimationFrame), so no manual delay.
+    // On the web the browser paces frames (requestAnimationFrame), no delay.
     SDL_Delay(16);
 #endif
   }

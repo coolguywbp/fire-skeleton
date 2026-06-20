@@ -20,11 +20,20 @@ struct Game;
 // invoked once-per-entity-per-frame on the hot path.
 typedef struct Script Script;
 
-// Create the Lua state, register the C API, then load and run `path` (which
-// registers prefabs and defines the on_* callbacks). Finally invokes the global
-// on_start() callback if the script defines one. Returns false on failure (the
-// caller may choose to continue without scripting).
-bool script_init(struct Game *G, const char *path);
+// Create the Lua state, register the C API and engine prelude, but load no
+// gameplay script (idle state). Modes load their script later via script_load.
+// Returns false on failure (the caller may continue without scripting).
+bool script_init(struct Game *G);
+
+// Tear down the current script/scene and load `path` (running its on_start).
+// On failure the current script keeps running unchanged. Returns success.
+bool script_load(struct Game *G, const char *path);
+
+// The path of the currently loaded script, or NULL if idle.
+const char *script_current_path(struct Game *G);
+
+// Tear down the current scene/script back to the idle state and clear the HUD.
+void script_unload(struct Game *G);
 
 // Run game-level per-frame logic: calls the Lua on_update(dt) callback if
 // present. Invoked ONCE per frame (in the level), never per entity.

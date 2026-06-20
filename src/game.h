@@ -28,7 +28,6 @@ typedef struct{
   int sceneId;
 } GameState;
 
-typedef struct Benchmark Benchmark;
 typedef struct Script Script;
 
 struct Game {
@@ -49,8 +48,10 @@ struct Game {
   EntityArchetype **archetypes;
   SDL_Texture **images;
 
-  Benchmark *bench;
   Script *script;
+
+  // One-line status text a script can set via hud(); shown top-left in level.
+  char hud_text[128];
 
   bool debug;
   bool is_running;

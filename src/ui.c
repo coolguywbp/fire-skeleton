@@ -1,7 +1,6 @@
 #include "ui.h"
 #include "game.h"
 #include "ecs_entity.h"
-#include "benchmark.h"
 #include "main.h"
 #include <SDL3/SDL_oldnames.h>
 #include <SDL3/SDL_touch.h>
@@ -14,7 +13,7 @@ void ui_level(struct Game *G, Clay_Sizing *claySize);
 
 void ui_fps(float frameRate);
 void ui_object_count(struct Game *G);
-void ui_benchmark(struct Game *G);
+void ui_hud(struct Game *G);
 
 
 Clay_String ToClayString(char* string);
@@ -60,7 +59,7 @@ bool ui_create_layout(struct Game *G) {
   // Object counter and benchmark status: only shown in the level, not the menus.
   if (G->state->sceneId == SCENE_LEVEL) {
     ui_object_count(G);
-    ui_benchmark(G);
+    ui_hud(G);
   }
   
   return true;
@@ -239,25 +238,12 @@ void ui_object_count(struct Game *G) {
   }
  }
 
-void ui_benchmark(struct Game *G) {
-  // Static for the same lifetime reason as ui_fps's buffer.
-  static char buf[64];
-  Benchmark *b = G->bench;
+void ui_hud(struct Game *G) {
+  // A script-provided status line (set via the Lua hud() function). Nothing to
+  // draw if no script set one this frame.
+  if (G->hud_text[0] == '\0') return;
 
-  switch (b->phase) {
-    case BENCH_RAMP_UP:
-      snprintf(buf, sizeof(buf), "BENCHMARK: ramping up...");
-      break;
-    case BENCH_RAMP_DOWN:
-      snprintf(buf, sizeof(buf), "BENCHMARK: peak %zu @30fps, settling", b->peak);
-      break;
-    case BENCH_DONE:
-    default:
-      snprintf(buf, sizeof(buf), "BENCHMARK: peak %zu entities @30fps", b->peak);
-      break;
-  }
-
-  CLAY(CLAY_ID("Benchmark"), {
+  CLAY(CLAY_ID("Hud"), {
       .floating = {
         .offset = {.x = 10, .y = 5},
         .attachTo = CLAY_ATTACH_TO_ROOT,
@@ -265,7 +251,7 @@ void ui_benchmark(struct Game *G) {
         .attachPoints = { .element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP }
       }
     }) {
-    CLAY_TEXT(ToClayString(buf), CLAY_TEXT_CONFIG({
+    CLAY_TEXT(ToClayString(G->hud_text), CLAY_TEXT_CONFIG({
       .fontSize = 24,
       .textColor = {137, 180, 250, 255},
       .fontId = 0

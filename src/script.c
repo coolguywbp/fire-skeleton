@@ -12,6 +12,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 // ---------------------------------------------------------------------------
 // Prefab model
@@ -130,7 +131,12 @@ static void apply_prefab(Script *s, Prefab *p, Entity e,
                          bool override_pos, float px, float py) {
   ECS *ecs = s->G->ecs;
 
-  if (p->has_transform) {
+  // Each component is only fetched if the prefab actually sets a field on it;
+  // an empty component table (e.g. Velocity = {}) leaves the C constructor's
+  // values untouched and pays no per-spawn lookup. This keeps bulk spawning
+  // (the benchmark) as cheap as a raw ECS_EntityNew.
+  if (p->has_transform &&
+      (override_pos || p->tr.has_x || p->tr.has_y || p->tr.has_w || p->tr.has_h)) {
     TransformComponent *t = ECS_EntityGetComponent(ecs, e, COMPONENT_ID(TransformComponent));
     if (t) {
       if (p->tr.has_w) t->w = p->tr.w;
@@ -140,16 +146,16 @@ static void apply_prefab(Script *s, Prefab *p, Entity e,
       if (override_pos) { t->x = px; t->y = py; }
     }
   }
-  if (p->has_velocity) {
+  if (p->has_velocity && (p->vel.has_vx || p->vel.has_vy)) {
     VelocityComponent *v = ECS_EntityGetComponent(ecs, e, COMPONENT_ID(VelocityComponent));
     if (v) {
       if (p->vel.has_vx) v->vx = p->vel.vx;
       if (p->vel.has_vy) v->vy = p->vel.vy;
     }
   }
-  if (p->has_sprite) {
+  if (p->has_sprite && p->spr.has_image) {
     SpriteComponent *sp = ECS_EntityGetComponent(ecs, e, COMPONENT_ID(SpriteComponent));
-    if (sp && p->spr.has_image) sp->gameImageId = p->spr.image;
+    if (sp) sp->gameImageId = p->spr.image;
   }
 }
 
@@ -340,20 +346,100 @@ static int l_count(lua_State *L) {
   return 1;
 }
 
+// spawn_many(prefab, n) -- bulk-spawn n entities (no ids returned). Cheap way to
+// add load (the benchmark); entities are tracked in C for despawn()/count().
+static int l_spawn_many(lua_State *L) {
+  Script *s = get_script(L);
+  const char *name = luaL_checkstring(L, 1);
+  lua_Integer n = luaL_checkinteger(L, 2);
+  Prefab *p = find_prefab(s, name);
+  if (!p) return luaL_error(L, "spawn_many: unknown prefab '%s'", name);
+  for (lua_Integer i = 0; i < n; i++) {
+    Entity e = ECS_EntityNew(s->G->ecs, p->archetype);
+    apply_prefab(s, p, e, false, 0, 0);
+    prefab_track(p, e);
+  }
+  return 0;
+}
+
+// despawn(prefab, n) -> removed. Destroy up to n of the prefab's entities
+// (most-recently spawned first).
+static int l_despawn(lua_State *L) {
+  Script *s = get_script(L);
+  const char *name = luaL_checkstring(L, 1);
+  lua_Integer n = luaL_checkinteger(L, 2);
+  Prefab *p = find_prefab(s, name);
+  if (!p) { lua_pushinteger(L, 0); return 1; }
+  lua_Integer removed = 0;
+  while (n-- > 0 && p->ent_count > 0) {
+    Entity e = p->ents[--p->ent_count];
+    if (ECS_EntityExists(s->G->ecs, e)) ECS_EntityDelete(s->G->ecs, e);
+    removed++;
+  }
+  lua_pushinteger(L, removed);
+  return 1;
+}
+
+// set_pos(e, x, y) -- move an entity (writes its TransformComponent).
+static int l_set_pos(lua_State *L) {
+  Script *s = get_script(L);
+  Entity e = (Entity)luaL_checkinteger(L, 1);
+  float x = (float)luaL_checknumber(L, 2);
+  float y = (float)luaL_checknumber(L, 3);
+  TransformComponent *t = ECS_EntityGetComponent(s->G->ecs, e, COMPONENT_ID(TransformComponent));
+  if (t) { t->x = x; t->y = y; }
+  return 0;
+}
+
+// get_pos(e) -> x, y  (nil if the entity has no Transform).
+static int l_get_pos(lua_State *L) {
+  Script *s = get_script(L);
+  Entity e = (Entity)luaL_checkinteger(L, 1);
+  TransformComponent *t = ECS_EntityGetComponent(s->G->ecs, e, COMPONENT_ID(TransformComponent));
+  if (!t) { lua_pushnil(L); return 1; }
+  lua_pushnumber(L, t->x);
+  lua_pushnumber(L, t->y);
+  return 2;
+}
+
+// fps() -> current smoothed frame rate.
+static int l_fps(lua_State *L) {
+  Script *s = get_script(L);
+  lua_pushnumber(L, (lua_Number)s->G->frameRate);
+  return 1;
+}
+
+// hud(text) -- set the on-screen status line (top-left in the level).
+static int l_hud(lua_State *L) {
+  Script *s = get_script(L);
+  const char *txt = luaL_optstring(L, 1, "");
+  snprintf(s->G->hud_text, sizeof(s->G->hud_text), "%s", txt);
+  return 0;
+}
+
 static void register_api(lua_State *L) {
   static const luaL_Reg fns[] = {
-    {"log",      l_log},
-    {"prefab",   l_prefab},
-    {"spawn",    l_spawn},
-    {"spawn_at", l_spawn_at},
-    {"destroy",  l_destroy},
-    {"count",    l_count},
+    {"log",        l_log},
+    {"prefab",     l_prefab},
+    {"spawn",      l_spawn},
+    {"spawn_at",   l_spawn_at},
+    {"spawn_many", l_spawn_many},
+    {"destroy",    l_destroy},
+    {"despawn",    l_despawn},
+    {"count",      l_count},
+    {"set_pos",    l_set_pos},
+    {"get_pos",    l_get_pos},
+    {"fps",        l_fps},
+    {"hud",        l_hud},
     {NULL, NULL}
   };
   for (const luaL_Reg *r = fns; r->name; r++) {
     lua_pushcfunction(L, r->func);
     lua_setglobal(L, r->name);
   }
+  // Screen size constants for scripts.
+  lua_pushinteger(L, WINDOW_WIDTH);  lua_setglobal(L, "SCREEN_W");
+  lua_pushinteger(L, WINDOW_HEIGHT); lua_setglobal(L, "SCREEN_H");
 }
 
 // ---------------------------------------------------------------------------
@@ -454,10 +540,11 @@ static void free_script_struct(Script *s) {
   free(s);
 }
 
-// Build a fresh, fully-initialized Script for `path`: new Lua state, API,
-// engine prelude, the user script, and its on_start(). Returns NULL on any
-// load error (after cleaning up everything it created, including any entities
-// on_start spawned before failing).
+// Build a fresh, fully-initialized Script: new Lua state, API and engine
+// prelude. If `path` is non-NULL it also runs that user script and its
+// on_start(); a NULL path yields an idle state (no gameplay loaded). Returns
+// NULL on any load error (after cleaning up everything it created, including
+// any entities on_start spawned before failing).
 static Script *script_boot(struct Game *G, const char *path) {
   Script *s = calloc(1, sizeof(*s));
   if (!s) {
@@ -465,7 +552,7 @@ static Script *script_boot(struct Game *G, const char *path) {
     return NULL;
   }
   s->G = G;
-  s->path = str_dup(path);
+  s->path = path ? str_dup(path) : NULL;
 
   s->L = luaL_newstate();
   if (!s->L) {
@@ -482,13 +569,15 @@ static Script *script_boot(struct Game *G, const char *path) {
   if (luaL_dostring(s->L, ENGINE_PRELUDE) != LUA_OK) {
     report_error(s->L, "engine prelude");
     ok = false;
-  } else if (luaL_dofile(s->L, path) != LUA_OK) {
-    report_error(s->L, "loading script");
-    ok = false;
-  } else if (push_global_fn(s->L, "on_start")) {
-    if (lua_pcall(s->L, 0, 0, 0) != LUA_OK) {
-      report_error(s->L, "on_start");
+  } else if (path) {
+    if (luaL_dofile(s->L, path) != LUA_OK) {
+      report_error(s->L, "loading script");
       ok = false;
+    } else if (push_global_fn(s->L, "on_start")) {
+      if (lua_pcall(s->L, 0, 0, 0) != LUA_OK) {
+        report_error(s->L, "on_start");
+        ok = false;
+      }
     }
   }
 
@@ -498,43 +587,69 @@ static Script *script_boot(struct Game *G, const char *path) {
     return NULL;
   }
 
-  SDL_PathInfo info;
-  if (SDL_GetPathInfo(path, &info)) s->last_mtime = info.modify_time;
+  if (path) {
+    SDL_PathInfo info;
+    if (SDL_GetPathInfo(path, &info)) s->last_mtime = info.modify_time;
+  }
   return s;
 }
 
-bool script_init(struct Game *G, const char *path) {
-  Script *s = script_boot(G, path);
-  if (!s) return false;
-  G->script = s;
-  LOG_DEBUG("Lua scripting layer initialized (%s)", path);
+// Boot a fresh state for `path` (may be NULL) and, only on success, tear down
+// the old scene/state and swap the fresh one in. On failure the current script
+// keeps running unchanged.
+static bool script_swap(struct Game *G, const char *path) {
+  Script *fresh = script_boot(G, path);
+  if (!fresh) return false;
+  if (G->script) {
+    destroy_tracked_entities(G->script);
+    free_script_struct(G->script);
+  }
+  G->script = fresh;
   return true;
 }
 
-// Rebuild the script world from the file. The new state is fully loaded first;
-// only if it loads cleanly are the old entities/state torn down and swapped
-// out. On failure the running game keeps going unchanged.
-bool script_reload(struct Game *G) {
-  if (!G->script) return false;
-  Script *old = G->script;
-
-  Script *fresh = script_boot(G, old->path);
-  if (!fresh) {
-    LOG_ERROR("Script reload failed; keeping the current script");
-    return false;
-  }
-
-  // Success: clear the old scene and swap in the fresh state.
-  destroy_tracked_entities(old);
-  free_script_struct(old);
-  G->script = fresh;
-  LOG_INFO("Scripts reloaded (%s)", fresh->path);
+bool script_init(struct Game *G) {
+  // Boot an idle state (prelude + API, no gameplay). Modes load their script
+  // on demand via script_load().
+  if (!script_swap(G, NULL)) return false;
+  LOG_DEBUG("Lua scripting layer initialized (idle)");
   return true;
+}
+
+bool script_load(struct Game *G, const char *path) {
+  if (script_swap(G, path)) {
+    LOG_INFO("Loaded script: %s", path);
+    return true;
+  }
+  LOG_ERROR("Failed to load script: %s", path);
+  return false;
+}
+
+const char *script_current_path(struct Game *G) {
+  return (G->script) ? G->script->path : NULL;
+}
+
+void script_unload(struct Game *G) {
+  script_swap(G, NULL);   // idle state; keeps running on the (unlikely) failure
+  G->hud_text[0] = '\0';
+}
+
+// Rebuild the script world from its current file. The new state is fully loaded
+// first; only if it loads cleanly are the old entities/state torn down. On
+// failure the running game keeps going unchanged.
+bool script_reload(struct Game *G) {
+  if (!G->script || !G->script->path) return false;
+  char *p = str_dup(G->script->path);
+  bool ok = script_swap(G, p);
+  if (ok) LOG_INFO("Scripts reloaded (%s)", p);
+  else    LOG_ERROR("Script reload failed; keeping the current script");
+  free(p);
+  return ok;
 }
 
 // Poll the script file's mtime (throttled) and reload when it changes.
 void script_check_reload(struct Game *G) {
-  if (!G->script) return;
+  if (!G->script || !G->script->path) return;
   Script *s = G->script;
 
   s->watch_accum += (double)G->dtime;
