@@ -1,5 +1,6 @@
 #include "g3d.h"
-#include "game.h"   // g_logical_w/h + SDL types (via main.h)
+#include "game.h"               // g_logical_w/h + SDL types (via main.h)
+#include "materials/materials.h"  // card materials (per-pixel shaders)
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -31,7 +32,40 @@ typedef struct { SDL_FPoint p[3]; SDL_FColor c; } G3DTri;
 static G3DTri g_tris[G3D_MAX_TRIS];
 static int    g_ntris;
 
-void g3d_begin_frame(void) { g_nlines = 0; g_ntris = 0; }
+// Shaded cards: a flat quad whose surface is painted by a per-pixel material
+// (holographic / chrome / glass, see materials/) into a streaming texture, then
+// drawn as a perspective quad. The command records the four projected corners
+// plus the shader uniforms (rotation -> view tilt, facing) so the material
+// shifts as the card tilts. Shading happens in g3d_flush (it needs the renderer
+// to make/lock the texture).
+#define G3D_MAX_CARDS 64
+typedef struct {
+  SDL_FPoint p[4];     // projected corners: TL, TR, BR, BL
+  int   material;
+  float rx, ry;        // card rotation -> view-dependent shading
+  float facing;        // 0..1, how square-on to the camera (edge-on dims)
+} G3DCard;
+static G3DCard      g_cards[G3D_MAX_CARDS];
+static int          g_ncards;
+static SDL_Texture *g_card_pool[G3D_MAX_CARDS];   // lazily created, one per slot
+
+void g3d_begin_frame(void) { g_nlines = 0; g_ntris = 0; g_ncards = 0; }
+
+// Lazily create the streaming texture for card slot i.
+static SDL_Texture *card_texture(SDL_Renderer *r, int i) {
+  if (i < 0 || i >= G3D_MAX_CARDS) return NULL;
+  if (!g_card_pool[i]) {
+    SDL_Texture *t = SDL_CreateTexture(r, SDL_PIXELFORMAT_ARGB8888,
+                                       SDL_TEXTUREACCESS_STREAMING,
+                                       CARD_TEX_W, CARD_TEX_H);
+    if (t) {
+      SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
+      SDL_SetTextureScaleMode(t, SDL_SCALEMODE_LINEAR);
+    }
+    g_card_pool[i] = t;
+  }
+  return g_card_pool[i];
+}
 
 void g3d_flush(struct SDL_Renderer *renderer) {
   for (int i = 0; i < g_ntris; i++) {
@@ -62,6 +96,42 @@ void g3d_flush(struct SDL_Renderer *renderer) {
                                  l->x2 + nx * off, l->y2 + ny * off);
       }
     }
+  }
+
+  // Shaded cards last (drawn in submission order so the scene controls overlap).
+  float t = (float)SDL_GetTicks() / 1000.0f;
+  for (int i = 0; i < g_ncards; i++) {
+    G3DCard *c = &g_cards[i];
+    SDL_Texture *tex = card_texture(renderer, i);
+    if (!tex) continue;
+    void *px; int pitch;
+    if (SDL_LockTexture(tex, NULL, &px, &pitch)) {
+      // vx/vy are the view tilt: the card's own ry/rx.
+      material_shade((Uint32 *)px, pitch, c->material, c->ry, c->rx, c->facing, t);
+      SDL_UnlockTexture(tex);
+    }
+    int idx[6] = { 0, 1, 2, 0, 2, 3 };
+
+    // Faded reflection below the card: mirror the top corners across the bottom
+    // edge (screen-space, good enough for the mild tilt), draw the same texture
+    // flipped, with vertex alpha fading from the card's base to transparent.
+    // Reads as depth on the black backdrop where a dark drop-shadow could not.
+    SDL_FPoint r0 = { 2 * c->p[3].x - c->p[0].x, 2 * c->p[3].y - c->p[0].y };
+    SDL_FPoint r1 = { 2 * c->p[2].x - c->p[1].x, 2 * c->p[2].y - c->p[1].y };
+    SDL_FColor near = { 1, 1, 1, 0.28f }, far = { 1, 1, 1, 0.0f };
+    SDL_Vertex rv[4] = {
+      { c->p[3], near, { 0, 1 } }, { c->p[2], near, { 1, 1 } },
+      { r1,      far,  { 1, 0 } }, { r0,      far,  { 0, 0 } },
+    };
+    SDL_RenderGeometry(renderer, tex, rv, 4, idx, 6);
+
+    // The card itself, on top.
+    SDL_FColor w = { 1, 1, 1, 1 };
+    SDL_Vertex v[4] = {
+      { c->p[0], w, { 0, 0 } }, { c->p[1], w, { 1, 0 } },
+      { c->p[2], w, { 1, 1 } }, { c->p[3], w, { 0, 1 } },
+    };
+    SDL_RenderGeometry(renderer, tex, v, 4, idx, 6);
   }
 }
 
@@ -139,11 +209,12 @@ static SDL_FColor shade(const Uint8 base[4], Vec3 n) {
 // Lua option helpers
 // ---------------------------------------------------------------------------
 
-// opts.color = {r,g,b,a} (0-255); defaults to opaque white.
-static void opt_rgba(lua_State *L, int t, Uint8 out[4]) {
-  out[0] = out[1] = out[2] = out[3] = 255;
+// opts[key] = {r,g,b,a} (0-255); fills `out` with the given default first.
+static void opt_rgba_key(lua_State *L, int t, const char *key, Uint8 out[4],
+                         Uint8 dr, Uint8 dg, Uint8 db, Uint8 da) {
+  out[0] = dr; out[1] = dg; out[2] = db; out[3] = da;
   if (!t) return;
-  lua_getfield(L, t, "color");
+  lua_getfield(L, t, key);
   if (lua_istable(L, -1)) {
     int idx = lua_gettop(L);
     for (int i = 0; i < 4; i++) {
@@ -153,6 +224,11 @@ static void opt_rgba(lua_State *L, int t, Uint8 out[4]) {
     }
   }
   lua_pop(L, 1);
+}
+
+// opts.color = {r,g,b,a} (0-255); defaults to opaque white.
+static void opt_rgba(lua_State *L, int t, Uint8 out[4]) {
+  opt_rgba_key(L, t, "color", out, 255, 255, 255, 255);
 }
 
 static float opt_f(lua_State *L, int t, const char *k, float def) {
@@ -277,6 +353,99 @@ static int l_tri(lua_State *L) {
   return 0;
 }
 
+// g3d.card(cx,cy,cz, w,h [, opts]) -- a flat rectangular card centred at
+// (cx,cy,cz), w wide and h tall in its own plane (local z = 0), rotated about
+// its centre by rx/ry/rz, then projected. Phase 1: a solid face with an
+// optional border; the lift/tilt "feel" is driven by the scene through the
+// rotation + position it passes each frame. opts:
+//   color  = {r,g,b,a}  face colour (default near-white)
+//   border = {r,g,b,a}  frame colour (default white); border = width in px
+//   rx/ry/rz            rotation about the card centre (radians)
+static int l_card(lua_State *L) {
+  float cx = (float)luaL_checknumber(L, 1);
+  float cy = (float)luaL_checknumber(L, 2);
+  float cz = (float)luaL_checknumber(L, 3);
+  float w  = (float)luaL_checknumber(L, 4);
+  float h  = (float)luaL_checknumber(L, 5);
+  int t = lua_istable(L, 6) ? 6 : 0;
+
+  Uint8 face[4]; opt_rgba_key(L, t, "color",  face, 235, 235, 245, 255);
+  Uint8 bord[4]; opt_rgba_key(L, t, "border", bord, 255, 255, 255, 255);
+  float bw = opt_f(L, t, "border", 0);   // border is a width (number) here
+  float rx = opt_f(L, t, "rx", 0), ry = opt_f(L, t, "ry", 0), rz = opt_f(L, t, "rz", 0);
+
+  // material = "holo"|"chrome"|"glass" picks a per-pixel shaded surface; without
+  // it the card is a plain flat-shaded quad (cheap, no texture).
+  int mat = MAT_FLAT;
+  if (t) {
+    lua_getfield(L, t, "material");
+    if (lua_isstring(L, -1)) mat = material_from_name(lua_tostring(L, -1));
+    lua_pop(L, 1);
+  }
+
+  // Local corners in the card plane, wound CCW: TL, TR, BR, BL.
+  float hw = w * 0.5f, hh = h * 0.5f;
+  static const float CS[4][2] = { {-1, 1}, {1, 1}, {1, -1}, {-1, -1} };
+  float P[4][2];
+  Vec3  R[4];
+  for (int i = 0; i < 4; i++) {
+    Vec3 v = { CS[i][0] * hw, CS[i][1] * hh, 0.0f };
+    R[i] = rotate(v, rx, ry, rz);
+    Vec3 world = { R[i].x + cx, R[i].y + cy, R[i].z + cz };
+    project(world, &P[i][0], &P[i][1]);
+  }
+
+  // Facing: how square-on the card is to the camera. Its local normal is
+  // (0,0,-1) (toward the camera at -z); facing = -n.z after rotation.
+  Vec3 n = rotate((Vec3){ 0, 0, -1 }, rx, ry, rz);
+  float facing = -n.z;
+  if (facing < 0.0f) facing = 0.0f;
+
+  if (mat != MAT_FLAT) {
+    // Shaded card: record a command; g3d_flush rasterises the material into a
+    // texture and draws the perspective quad.
+    if (g_ncards < G3D_MAX_CARDS) {
+      G3DCard *cd = &g_cards[g_ncards++];
+      for (int i = 0; i < 4; i++) cd->p[i] = (SDL_FPoint){ P[i][0], P[i][1] };
+      cd->material = mat;
+      cd->rx = rx; cd->ry = ry; cd->facing = facing;
+    }
+    return 0;
+  }
+
+  // Flat card: a solid shaded quad with an optional straight border.
+  float k = 0.62f + 0.38f * facing;
+  SDL_FColor fc = { face[0] / 255.0f * k, face[1] / 255.0f * k,
+                    face[2] / 255.0f * k, face[3] / 255.0f };
+  push_tri(P[0][0], P[0][1], P[1][0], P[1][1], P[2][0], P[2][1], fc);
+  push_tri(P[0][0], P[0][1], P[2][0], P[2][1], P[3][0], P[3][1], fc);
+
+  if (bw > 0.0f)
+    for (int e = 0; e < 4; e++) {
+      int a = e, b = (e + 1) & 3;
+      push_line(P[a][0], P[a][1], P[b][0], P[b][1],
+                bord[0], bord[1], bord[2], bord[3], bw);
+    }
+  return 0;
+}
+
+// g3d.project(x,y,z) -> sx, sy, scale -- map a world point to logical-screen
+// coordinates and return the perspective scale (logical pixels per world unit at
+// that depth), so a scene can hit-test a card by projecting its centre and
+// sizing the hover rect by scale. Pure query; emits nothing.
+static int l_project(lua_State *L) {
+  Vec3 p = { (float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2),
+             (float)luaL_checknumber(L, 3) };
+  float sx, sy;
+  project(p, &sx, &sy);
+  float depth = p.z - g_cam_z;
+  if (depth < 0.001f) depth = 0.001f;
+  lua_pushnumber(L, sx);
+  lua_pushnumber(L, sy);
+  lua_pushnumber(L, focal_len() / depth);
+  return 3;
+}
+
 // g3d.camera(x, y, z) -- move the camera (it looks along +z).
 static int l_camera(lua_State *L) {
   g_cam_x = (float)luaL_checknumber(L, 1);
@@ -298,9 +467,11 @@ void g3d_register(lua_State *L) {
   static const luaL_Reg fns[] = {
     { "camera", l_camera },
     { "fov",    l_fov },
-    { "line", l_line },
-    { "tri",  l_tri },
-    { "cube", l_cube },
+    { "line",    l_line },
+    { "tri",     l_tri },
+    { "cube",    l_cube },
+    { "card",    l_card },
+    { "project", l_project },
     { NULL, NULL },
   };
   luaL_newlib(L, fns);

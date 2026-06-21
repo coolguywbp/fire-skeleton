@@ -443,6 +443,7 @@ void game_update(struct Game *G) {
       want = (G->state->mode == MODE_BENCHMARK) ? "scripts/benchmark.lua"
            : (G->state->mode == MODE_SLOTS)     ? "scripts/slots.lua"
            : (G->state->mode == MODE_CUBE)      ? "scripts/cube.lua"
+           : (G->state->mode == MODE_CARDS)     ? "scripts/cards.lua"
                                                 : "scripts/invaders.lua";
       break;
     default:

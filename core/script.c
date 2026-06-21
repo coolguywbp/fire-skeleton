@@ -460,6 +460,7 @@ static int l_scene(lua_State *L) {
       n = (G->state->mode == MODE_BENCHMARK) ? "benchmark"
         : (G->state->mode == MODE_SLOTS)     ? "slots"
         : (G->state->mode == MODE_CUBE)      ? "cube"
+        : (G->state->mode == MODE_CARDS)     ? "cards"
                                              : "play";
       break;
     default: n = "menu"; break;
@@ -481,6 +482,7 @@ static int l_goto_scene(lua_State *L) {
   else if (!strcmp(name, "benchmark")) { G->state->mode = MODE_BENCHMARK; G->state->sceneId = SCENE_LEVEL; }
   else if (!strcmp(name, "slots"))     { G->state->mode = MODE_SLOTS;     G->state->sceneId = SCENE_LEVEL; }
   else if (!strcmp(name, "cube"))      { G->state->mode = MODE_CUBE;      G->state->sceneId = SCENE_LEVEL; }
+  else if (!strcmp(name, "cards"))     { G->state->mode = MODE_CARDS;     G->state->sceneId = SCENE_LEVEL; }
   else return luaL_error(L, "goto_scene: unknown scene '%s'", name);
   return 0;
 }
@@ -515,6 +517,14 @@ static int l_touch_pos(lua_State *L) {
     }
   }
   return 0;
+}
+
+// mouse_pos() -> x, y of the mouse in logical coords (last known position).
+static int l_mouse_pos(lua_State *L) {
+  struct Game *G = get_script(L)->G;
+  lua_pushnumber(L, G->mouse ? G->mouse->x : 0);
+  lua_pushnumber(L, G->mouse ? G->mouse->y : 0);
+  return 2;
 }
 
 // --- Video settings ---------------------------------------------------------
@@ -575,6 +585,7 @@ static void register_api(lua_State *L) {
     {"quit",       l_quit},
     {"touch_count",     l_touch_count},
     {"touch_pos",       l_touch_pos},
+    {"mouse_pos",       l_mouse_pos},
     {"set_fullscreen",  l_set_fullscreen},
     {"is_fullscreen",   l_is_fullscreen},
     {"set_window_size", l_set_window_size},

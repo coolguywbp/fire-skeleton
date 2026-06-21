@@ -158,6 +158,7 @@ local DEMOS = {
   { key = "slots",     name = "SLOTS",     shot = "shot_slots",     go = "slots"     },
   { key = "benchmark", name = "BENCHMARK", shot = "shot_benchmark", go = "benchmark" },
   { key = "cube",      name = "3D CUBE",   shot = "shot_cube",      go = "cube"      },
+  { key = "cards",     name = "CARDS",     shot = "shot_cards",     go = "cards"     },
 }
 local dgc = 1   -- demos grid cursor: 1..#DEMOS = a demo, #DEMOS+1 = BACK
 

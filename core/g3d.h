@@ -15,6 +15,9 @@ struct SDL_Renderer;
 //   g3d.line(x1,y1,z1, x2,y2,z2 [, {color={r,g,b,a}, width=, rx=, ry=, rz=}])
 //   g3d.tri(x1,y1,z1, x2,y2,z2, x3,y3,z3 [, {color=, rx=, ry=, rz=}])
 //   g3d.cube(cx,cy,cz, size       [, {color=, width=, rx=, ry=, rz=, fill=, wire=}])
+//   g3d.card(cx,cy,cz, w,h        [, {material="holo"|"chrome"|"glass",
+//                                     color=, border=width, rx=, ry=, rz=}])
+//   g3d.project(x,y,z) -> sx,sy,scale   (query: world point -> screen + px/unit)
 //
 // rx/ry/rz are rotation angles in radians applied about the primitive's own
 // origin before projection. World space is right-handed with +y up; the camera
