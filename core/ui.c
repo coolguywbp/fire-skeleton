@@ -33,6 +33,7 @@ bool ui_create_layout(struct Game *G) {
   if (G->state->sceneId == SCENE_LEVEL) {
     ui_object_count(G);
     ui_hud(G);
+    script_draw_back(G);   // on-screen BACK (web/touch; desktop uses Esc)
   }
 
   return true;

@@ -96,10 +96,14 @@ local DEMOS = {
   { key = "benchmark", name = "BENCHMARK", shot = "shot_benchmark", go = "benchmark" },
   { key = "cube",      name = "3D CUBE",   shot = "shot_cube",      go = "cube"      },
 }
-local DCOLS = 3
 local dgc = 1   -- demos grid cursor: 1..#DEMOS = a demo, #DEMOS+1 = BACK
 
 local function demo_count() return #DEMOS + 1 end
+
+-- Columns adapt to the (adaptive) width: 3 across when there's room, 2 on a
+-- narrow/portrait phone, so the tiles always fit and stay tappable instead of
+-- running off-screen.
+local function demo_cols() return (SCREEN_W < 1140) and 2 or 3 end
 
 local function demo_activate(i)
   if i >= 1 and i <= #DEMOS then goto_scene(DEMOS[i].go)
@@ -108,18 +112,30 @@ end
 
 local function draw_demos()
   ui.rect(0, 0, SCREEN_W, SCREEN_H, { color = { 0, 0, 0, 255 } })
-  ui.text(SCREEN_W / 2 - 140, 80, "DEMOS", { size = 90, font = 1 })
 
-  local tw, th, gap, imgh = 360, 254, 32, 194
   local n     = demo_count()
-  local gridw = DCOLS * tw + (DCOLS - 1) * gap
+  local cols  = demo_cols()
+  local gap   = 28
+  local marg  = 70
+  local tw    = math.min(360, (SCREEN_W - marg * 2 - (cols - 1) * gap) / cols)
+  local imgh  = math.floor(tw * 9 / 16)          -- 16:9 thumbnail
+  local nsize = math.max(16, math.min(28, tw * 0.09))
+  local th    = imgh + nsize + 24
+  local rows  = math.ceil(n / cols)
+  local gridw = cols * tw + (cols - 1) * gap
+  local gridh = rows * th + (rows - 1) * gap
   local sx    = (SCREEN_W - gridw) / 2
-  local sy    = 300
   local WHITE = { 255, 255, 255, 255 }
 
+  -- Centre the title + grid block vertically.
+  local tsize = math.min(90, SCREEN_W * 0.11)
+  local top   = math.max(20, (SCREEN_H - gridh - tsize - 40) / 2)
+  ui.text(SCREEN_W / 2 - (#"DEMOS" * tsize * 0.6) / 2, top, "DEMOS", { size = tsize, font = 1 })
+  local sy = top + tsize + 40
+
   for i = 1, n do
-    local col = (i - 1) % DCOLS
-    local row = math.floor((i - 1) / DCOLS)
+    local col = (i - 1) % cols
+    local row = math.floor((i - 1) / cols)
     local x   = sx + col * (tw + gap)
     local y   = sy + row * (th + gap)
     -- Monochrome to match the rest of the menu: no fill, a thin white frame that
@@ -130,11 +146,11 @@ local function draw_demos()
     local d = DEMOS[i]
     if d then
       if ui.button(d.key, x, y, tw, th, "", frame) then demo_activate(i) end
-      ui.image(d.shot, x + 8, y + 8, tw - 16, imgh, 870)   -- z above the tile frame
-      local cw = #d.name * 28 * 0.62                        -- approx centre (no text metrics)
-      ui.text(x + (tw - cw) / 2, y + imgh + 16, d.name, { size = 28, font = 1 })
+      ui.image(d.shot, x + 6, y + 6, tw - 12, imgh, 870)   -- z above the tile frame
+      local cw = #d.name * nsize * 0.62                     -- approx centre (no text metrics)
+      ui.text(x + (tw - cw) / 2, y + imgh + 12, d.name, { size = nsize, font = 1 })
     else
-      frame.size = 40
+      frame.size = math.max(24, nsize + 6)
       if ui.button("back", x, y, tw, th, "BACK", frame) then demo_activate(i) end
     end
   end
@@ -161,11 +177,11 @@ function on_key(key)
   local s = scene()
   enter(s)
   if s == "demos" then
-    local n = demo_count()
+    local n, cols = demo_count(), demo_cols()
     if     key == "left"  then dgc = math.max(1, dgc - 1)
     elseif key == "right" then dgc = math.min(n, dgc + 1)
-    elseif key == "up"    then if dgc - DCOLS >= 1 then dgc = dgc - DCOLS end
-    elseif key == "down"  then if dgc + DCOLS <= n then dgc = dgc + DCOLS end
+    elseif key == "up"    then if dgc - cols >= 1 then dgc = dgc - cols end
+    elseif key == "down"  then if dgc + cols <= n then dgc = dgc + cols end
     elseif key == "return" or key == "keypad enter" then demo_activate(dgc) end
     return
   end

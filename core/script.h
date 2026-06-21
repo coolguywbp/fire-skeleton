@@ -55,6 +55,10 @@ void script_on_key(struct Game *G, const char *key);
 // Must be invoked inside the Clay layout pass.
 void script_on_ui(struct Game *G);
 
+// Draw the engine's on-screen BACK button (prelude __ui_back) for level scenes,
+// so touch devices can leave a demo. Must be inside the Clay layout pass.
+void script_draw_back(struct Game *G);
+
 // Rebuild the script world from its file. The fresh state is loaded first and
 // swapped in only if it loads cleanly; on failure the running game is unchanged.
 bool script_reload(struct Game *G);

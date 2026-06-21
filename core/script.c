@@ -749,6 +749,18 @@ static const char *ENGINE_PRELUDE =
   "    handlers = {}, buttons = {}, cursor = 1 }, View)\n"
   "  for _, n in ipairs(self.tree) do collect_buttons(n, self.buttons) end\n"
   "  return self\n"
+  "end\n"
+  // On-screen BACK button for the demos: the engine calls this in every level
+  // scene so touch devices (no Esc key) can leave a demo. Web only -- desktop
+  // uses Esc/Q. Bottom-left, clear of the demos' HUD corners.
+  "function __ui_back()\n"
+  "  if not IS_WEB then return end\n"
+  "  local h = 58\n"
+  "  if ui.button('__back', 18, SCREEN_H - h - 18, 134, h, 'BACK',\n"
+  "      { size = 30, color = { 18, 18, 26, 210 }, hover_color = { 60, 60, 90, 255 },\n"
+  "        border = 2, border_hot = 3, border_color = { 255, 255, 255, 255 }, radius = 6 }) then\n"
+  "    goto_scene('demos')\n"
+  "  end\n"
   "end\n";
 
 // ---------------------------------------------------------------------------
@@ -992,6 +1004,14 @@ void script_on_ui(struct Game *G) {
 
   if (push_global_fn(L, "on_ui")) {
     if (lua_pcall(L, 0, 0, 0) != LUA_OK) report_error(L, "on_ui");
+  }
+}
+
+void script_draw_back(struct Game *G) {
+  if (!G->script || !G->script->L) return;
+  lua_State *L = G->script->L;
+  if (push_global_fn(L, "__ui_back")) {
+    if (lua_pcall(L, 0, 0, 0) != LUA_OK) report_error(L, "__ui_back");
   }
 }
 
