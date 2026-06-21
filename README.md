@@ -1,7 +1,7 @@
 <h1 align="center">Fire Skeleton</h1>
 
 <p align="center">
-  <img src="assets/images/MenuFireSkeleton.png" alt="Fire Skeleton — 2D game engine logo" width="150">
+  <img src="assets/images/skeleton.png" alt="Fire Skeleton — 2D game engine logo" width="150">
 </p>
 
 <p align="center">
