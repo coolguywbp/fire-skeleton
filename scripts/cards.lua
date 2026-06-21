@@ -18,7 +18,7 @@ local CW, CH  = 0.85, 1.18   -- card size in world units (MTG aspect ~0.72)
 local GAP     = 1.45         -- horizontal spacing between card centres
 local BASE_Y  = -0.10        -- resting vertical position
 
-local HOLD_TIME = 0.18       -- grace period after the pointer leaves a card
+local HOLD_TIME = 0.55       -- grace period after the pointer leaves a card
 
 -- Per-card animation state.
 local lift = { 0, 0, 0 }     -- smoothed lift (0 = resting, 1 = fully raised)
@@ -100,8 +100,6 @@ end
 function on_ui()
   g3d.camera(0, 0, -4)
   g3d.fov(55)
-
-  ui.text(SCREEN_W / 2 - (#"CARDS" * 56 * 0.6) / 2, 40, "CARDS", { size = 56, font = 1 })
 
   -- No depth buffer: draw the least-raised card first so a hovered card that
   -- grows over its neighbours sits on top.

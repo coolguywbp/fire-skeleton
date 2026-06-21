@@ -8,6 +8,7 @@
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // Perspective camera. The camera sits at g_cam_* looking along +z; the focal
 // length is derived from the vertical field of view, so the scene controls
@@ -42,16 +43,29 @@ static int    g_ntris;
 // shifts as the card tilts. Shading happens in g3d_flush (it needs the renderer
 // to make/lock the texture).
 #define G3D_MAX_CARDS 64
+// The card face is drawn as a subdivided grid (not one quad) so the textured
+// material maps near-perspective-correct -- a single tilted quad would shear the
+// picture (SDL_RenderGeometry interpolates UVs affinely).
+#define G3D_GX 5
+#define G3D_GY 7
+#define G3D_GRIDV ((G3D_GX + 1) * (G3D_GY + 1))
 typedef struct {
-  SDL_FPoint   p[4];   // projected corners: TL, TR, BR, BL
+  SDL_FPoint   p[4];               // projected corners: TL, TR, BR, BL (reflection)
+  float        grid[G3D_GRIDV][2]; // projected grid vertices (face)
   int          material;
-  float        rx, ry; // card rotation -> view-dependent shading
-  float        facing; // 0..1, how square-on to the camera (edge-on dims)
-  SDL_Surface *base;   // optional card-art image (CPU pixels), NULL = procedural
+  float        rx, ry;             // tilt -> view-dependent shading + cache key
+  float        facing;             // 0..1, how square-on to the camera (dims)
+  SDL_Surface *base;               // optional card-art image, NULL = procedural
 } G3DCard;
 static G3DCard      g_cards[G3D_MAX_CARDS];
 static int          g_ncards;
 static SDL_Texture *g_card_pool[G3D_MAX_CARDS];   // lazily created, one per slot
+
+// Per-slot record of what each texture was last shaded with, so an unchanging
+// card (idle, or held still) is not re-shaded every frame. Persists across
+// frames on purpose.
+typedef struct { int material; float rx, ry; const void *base; int valid; } CardCache;
+static CardCache g_card_cache[G3D_MAX_CARDS];
 
 void g3d_begin_frame(void) { g_nlines = 0; g_ntris = 0; g_ncards = 0; }
 
@@ -78,6 +92,43 @@ static SDL_Surface *load_card_art(const char *name) {
   g_art[g_nart].surf = conv;
   g_nart++;
   return conv;
+}
+
+// Per-slot art pre-resampled to the card-texture size, so the per-frame shade
+// reads it 1:1 instead of bilinear-sampling the full-res art every pixel. Built
+// once per (slot, source) and reused.
+static Uint32     *g_base_res[G3D_MAX_CARDS];
+static const void *g_base_res_src[G3D_MAX_CARDS];
+
+static const Uint32 *ensure_base_res(int slot, SDL_Surface *src) {
+  if (!src) return NULL;
+  if (g_base_res_src[slot] == src && g_base_res[slot]) return g_base_res[slot];
+  if (!g_base_res[slot]) {
+    g_base_res[slot] = malloc((size_t)CARD_TEX_W * CARD_TEX_H * sizeof(Uint32));
+    if (!g_base_res[slot]) return NULL;
+  }
+  const Uint32 *sp = (const Uint32 *)src->pixels;
+  int ss = src->pitch / 4, sw = src->w, sh = src->h;
+  for (int y = 0; y < CARD_TEX_H; y++) {
+    float fy = (float)y / (CARD_TEX_H - 1) * (sh - 1);
+    int y0 = (int)fy, y1 = y0 + 1 < sh ? y0 + 1 : y0; float ty = fy - y0;
+    for (int x = 0; x < CARD_TEX_W; x++) {
+      float fx = (float)x / (CARD_TEX_W - 1) * (sw - 1);
+      int x0 = (int)fx, x1 = x0 + 1 < sw ? x0 + 1 : x0; float tx = fx - x0;
+      Uint32 p00 = sp[y0*ss+x0], p10 = sp[y0*ss+x1], p01 = sp[y1*ss+x0], p11 = sp[y1*ss+x1];
+      Uint32 out = 0xff000000u;
+      for (int ch = 0; ch < 3; ch++) {
+        int sh2 = ch * 8;
+        float c00 = (p00>>sh2)&0xff, c10 = (p10>>sh2)&0xff,
+              c01 = (p01>>sh2)&0xff, c11 = (p11>>sh2)&0xff;
+        float top = c00 + (c10-c00)*tx, bot = c01 + (c11-c01)*tx;
+        out |= (Uint32)(top + (bot-top)*ty + 0.5f) << sh2;
+      }
+      g_base_res[slot][y*CARD_TEX_W + x] = out;
+    }
+  }
+  g_base_res_src[slot] = src;
+  return g_base_res[slot];
 }
 
 // Lazily create the streaming texture for card slot i.
@@ -129,28 +180,38 @@ void g3d_flush(struct SDL_Renderer *renderer) {
 
   // Shaded cards last (drawn in submission order so the scene controls overlap).
   float t = (float)SDL_GetTicks() / 1000.0f;
+  SDL_FColor white = { 1, 1, 1, 1 };
   for (int i = 0; i < g_ncards; i++) {
     G3DCard *c = &g_cards[i];
     SDL_Texture *tex = card_texture(renderer, i);
     if (!tex) continue;
-    const Uint32 *bpx = NULL; int bw = 0, bh = 0, bstride = 0;
-    if (c->base) {
-      bpx = (const Uint32 *)c->base->pixels;
-      bw = c->base->w; bh = c->base->h; bstride = c->base->pitch / 4;
+
+    // Re-shade only when an input that affects the pixels changed (tilt / facing
+    // / material / art). Idle cards keep last frame's texture -> big FPS win.
+    // Quantise the tilt so small drifts don't re-shade: the texture only changes
+    // visibly past a step, and at high frame rates the per-frame tilt delta is
+    // tiny -- so most frames stay cached and the cost is paid only occasionally.
+    CardCache *ca = &g_card_cache[i];
+    int dirty = !ca->valid || ca->material != c->material || ca->base != c->base
+                || fabsf(ca->rx - c->rx) > 6e-3f || fabsf(ca->ry - c->ry) > 6e-3f;
+    if (dirty) {
+      const Uint32 *bpx = ensure_base_res(i, c->base);
+      void *px; int pitch;
+      if (SDL_LockTexture(tex, NULL, &px, &pitch)) {
+        // vx/vy are the view tilt: the card's own ry/rx. base is pre-resampled
+        // to the texture size, so it's read 1:1.
+        material_shade((Uint32 *)px, pitch, c->material, c->ry, c->rx, c->facing, t,
+                       bpx, CARD_TEX_W, CARD_TEX_H, CARD_TEX_W);
+        SDL_UnlockTexture(tex);
+      }
+      ca->valid = 1; ca->material = c->material; ca->base = c->base;
+      ca->rx = c->rx; ca->ry = c->ry;
     }
-    void *px; int pitch;
-    if (SDL_LockTexture(tex, NULL, &px, &pitch)) {
-      // vx/vy are the view tilt: the card's own ry/rx.
-      material_shade((Uint32 *)px, pitch, c->material, c->ry, c->rx, c->facing, t,
-                     bpx, bw, bh, bstride);
-      SDL_UnlockTexture(tex);
-    }
-    int idx[6] = { 0, 1, 2, 0, 2, 3 };
 
     // Faded reflection below the card: mirror the top corners across the bottom
-    // edge (screen-space, good enough for the mild tilt), draw the same texture
-    // flipped, with vertex alpha fading from the card's base to transparent.
-    // Reads as depth on the black backdrop where a dark drop-shadow could not.
+    // edge (one quad is fine -- it's faded and slightly skewed anyway). Reads as
+    // depth on the black backdrop where a dark drop-shadow could not.
+    int idx[6] = { 0, 1, 2, 0, 2, 3 };
     SDL_FPoint r0 = { 2 * c->p[3].x - c->p[0].x, 2 * c->p[3].y - c->p[0].y };
     SDL_FPoint r1 = { 2 * c->p[2].x - c->p[1].x, 2 * c->p[2].y - c->p[1].y };
     SDL_FColor near = { 1, 1, 1, 0.28f }, far = { 1, 1, 1, 0.0f };
@@ -160,13 +221,24 @@ void g3d_flush(struct SDL_Renderer *renderer) {
     };
     SDL_RenderGeometry(renderer, tex, rv, 4, idx, 6);
 
-    // The card itself, on top.
-    SDL_FColor w = { 1, 1, 1, 1 };
-    SDL_Vertex v[4] = {
-      { c->p[0], w, { 0, 0 } }, { c->p[1], w, { 1, 0 } },
-      { c->p[2], w, { 1, 1 } }, { c->p[3], w, { 0, 1 } },
-    };
-    SDL_RenderGeometry(renderer, tex, v, 4, idx, 6);
+    // The card face, as a subdivided grid so the texture stays straight when the
+    // card tilts (no affine warp of the picture/text).
+    SDL_Vertex v[G3D_GRIDV];
+    for (int gj = 0; gj <= G3D_GY; gj++)
+      for (int gi = 0; gi <= G3D_GX; gi++) {
+        int id = gj * (G3D_GX + 1) + gi;
+        v[id].position  = (SDL_FPoint){ c->grid[id][0], c->grid[id][1] };
+        v[id].color     = white;
+        v[id].tex_coord = (SDL_FPoint){ (float)gi / G3D_GX, (float)gj / G3D_GY };
+      }
+    int gidx[G3D_GX * G3D_GY * 6], ni = 0;
+    for (int gj = 0; gj < G3D_GY; gj++)
+      for (int gi = 0; gi < G3D_GX; gi++) {
+        int a = gj * (G3D_GX + 1) + gi, b = a + 1, cc = a + (G3D_GX + 1), d = cc + 1;
+        gidx[ni++] = a; gidx[ni++] = b; gidx[ni++] = d;
+        gidx[ni++] = a; gidx[ni++] = d; gidx[ni++] = cc;
+      }
+    SDL_RenderGeometry(renderer, tex, v, G3D_GRIDV, gidx, ni);
   }
 }
 
@@ -194,6 +266,18 @@ static Vec3 rotate(Vec3 p, float rx, float ry, float rz) {
   float y3 = x2 * sz + y2 * cz;
   float z3 = z2;
   return (Vec3){ x3, y3, z3 };
+}
+
+// Rotate p about a unit axis k by angle with cos = c, sin = s (Rodrigues). Used
+// for the card's single-axis, no-roll tilt.
+static Vec3 rotate_axis(Vec3 p, Vec3 k, float c, float s) {
+  float kd = k.x * p.x + k.y * p.y + k.z * p.z;          // k . p
+  Vec3  kc = { k.y * p.z - k.z * p.y,                    // k x p
+               k.z * p.x - k.x * p.z,
+               k.x * p.y - k.y * p.x };
+  return (Vec3){ p.x * c + kc.x * s + k.x * kd * (1.0f - c),
+                 p.y * c + kc.y * s + k.y * kd * (1.0f - c),
+                 p.z * c + kc.z * s + k.z * kd * (1.0f - c) };
 }
 
 // Focal length (in logical pixels) from the vertical FOV: half the viewport
@@ -423,22 +507,40 @@ static int l_card(lua_State *L) {
     lua_pop(L, 1);
   }
 
-  // Local corners in the card plane, wound CCW: TL, TR, BR, BL.
-  float hw = w * 0.5f, hh = h * 0.5f;
-  static const float CS[4][2] = { {-1, 1}, {1, 1}, {1, -1}, {-1, -1} };
-  float P[4][2];
-  Vec3  R[4];
-  for (int i = 0; i < 4; i++) {
-    Vec3 v = { CS[i][0] * hw, CS[i][1] * hh, 0.0f };
-    R[i] = rotate(v, rx, ry, rz);
-    Vec3 world = { R[i].x + cx, R[i].y + cy, R[i].z + cz };
-    project(world, &P[i][0], &P[i][1]);
-  }
+  (void)rz;   // cards tilt by facing direction, not by a roll angle
+  // No-twist tilt: rather than stacking Euler X/Y rotations (which add a roll as
+  // the card swings -- it looks like it spins about the axis out of the camera),
+  // point the card's normal toward the target along the SHORTEST arc. rx/ry are
+  // read as the desired pitch/yaw of the normal; the card then tilts about a
+  // single in-plane axis (perpendicular to the view) with zero spin.
+  float tx = sinf(ry), ty = sinf(rx);                 // target tilt of the normal
+  float nl = sqrtf(tx * tx + ty * ty + 1.0f);
+  Vec3  nrm = { tx / nl, ty / nl, -1.0f / nl };        // target face normal
+  // Shortest-arc rotation (0,0,-1) -> nrm: axis = (0,0,-1) x nrm = (ny, -nx, 0),
+  // |axis| = sin(theta), cos(theta) = -nrm.z.
+  float s = sqrtf(nrm.x * nrm.x + nrm.y * nrm.y), c = -nrm.z;
+  Vec3 kax = (s > 1e-6f) ? (Vec3){ nrm.y / s, -nrm.x / s, 0.0f } : (Vec3){ 1, 0, 0 };
 
-  // Facing: how square-on the card is to the camera. Its local normal is
-  // (0,0,-1) (toward the camera at -z); facing = -n.z after rotation.
-  Vec3 n = rotate((Vec3){ 0, 0, -1 }, rx, ry, rz);
-  float facing = -n.z;
+  // Project a subdivided grid of the card face. The textured path renders this
+  // grid (so the picture doesn't shear when the card tilts); the flat path and
+  // the reflection use the four corners pulled from it.
+  float hw = w * 0.5f, hh = h * 0.5f;
+  float grid[G3D_GRIDV][2];
+  for (int gj = 0; gj <= G3D_GY; gj++)
+    for (int gi = 0; gi <= G3D_GX; gi++) {
+      float lu = (float)gi / G3D_GX, lv = (float)gj / G3D_GY;
+      Vec3 lp = { (lu * 2.0f - 1.0f) * hw, (1.0f - lv * 2.0f) * hh, 0.0f };
+      Vec3 r = rotate_axis(lp, kax, c, s);
+      int id = gj * (G3D_GX + 1) + gi;
+      project((Vec3){ r.x + cx, r.y + cy, r.z + cz }, &grid[id][0], &grid[id][1]);
+    }
+  int iTL = 0, iTR = G3D_GX, iBR = G3D_GRIDV - 1, iBL = G3D_GY * (G3D_GX + 1);
+  float P[4][2] = {
+    { grid[iTL][0], grid[iTL][1] }, { grid[iTR][0], grid[iTR][1] },
+    { grid[iBR][0], grid[iBR][1] }, { grid[iBL][0], grid[iBL][1] },
+  };
+
+  float facing = -nrm.z;   // = c; how square-on the card is to the camera
   if (facing < 0.0f) facing = 0.0f;
 
   if (mat != MAT_FLAT) {
@@ -447,6 +549,7 @@ static int l_card(lua_State *L) {
     if (g_ncards < G3D_MAX_CARDS) {
       G3DCard *cd = &g_cards[g_ncards++];
       for (int i = 0; i < 4; i++) cd->p[i] = (SDL_FPoint){ P[i][0], P[i][1] };
+      memcpy(cd->grid, grid, sizeof grid);
       cd->material = mat;
       cd->rx = rx; cd->ry = ry; cd->facing = facing;
       cd->base = base;
