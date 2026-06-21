@@ -25,10 +25,14 @@ This document covers the complete surface available to scripts.
 
 ## Conventions
 
-- **Coordinate space.** All positions and sizes are in a fixed **logical
-  1280×960** space (`SCREEN_W` × `SCREEN_H`). The renderer letterbox-scales this
-  to the real window/canvas/fullscreen size, and maps mouse/touch input back
-  into it — so scripts never deal with the actual resolution.
+- **Coordinate space.** All positions and sizes are in a **logical** space
+  (`SCREEN_W` × `SCREEN_H`) that the renderer scales to the real
+  window/canvas/fullscreen size, mapping mouse/touch input back into it — so
+  scripts never deal with the actual resolution. The **height is fixed at 960**;
+  the **width is adaptive**, tracking the window's aspect ratio (≈ `1280` at 4:3,
+  wider on a 16:9 screen, narrower on an upright phone). Read `SCREEN_W` each
+  frame rather than assuming a constant — it changes on resize / rotation, and a
+  scene can detect portrait with `SCREEN_W < SCREEN_H`.
 - **Where scripts live.** One script per scene under `scripts/`. They can
   `require` each other (e.g. a scene imports its layout file):
   `package.path` already includes `scripts/?.lua`.
@@ -189,13 +193,15 @@ Valid names:
 | `"play"` | Invaders demo |
 | `"benchmark"` | Benchmark demo |
 | `"slots"` | Slots demo |
+| `"cube"` | 3D cube demo (software `g3d` renderer) |
 
 ```lua
 :on("play", function() goto_scene("play") end)
 if scene() == "video" then draw_video() end
 ```
 
-Pressing `Esc` returns to the main menu (handled by the engine).
+Pressing `Esc`/`Q` inside a demo returns to the **demo picker**; from a menu
+screen it returns to the **main menu** (handled by the engine).
 
 ---
 
@@ -236,14 +242,15 @@ Globals:
 
 | Global | Value |
 |---|---|
-| `SCREEN_W` | `1280` (logical width) |
-| `SCREEN_H` | `960` (logical height) |
+| `SCREEN_W` | logical width — **adaptive** (≈ `1280`, tracks the window aspect ratio; updated on resize) |
+| `SCREEN_H` | `960` (logical height — fixed) |
 | `IS_WEB` | `true` on the WebAssembly build, else `false` |
 
 ```lua
 local off = math.sin(time() * 2.0) * 50          -- bobbing animation
 hud(string.format("BENCHMARK: %d (%d fps)", n, math.floor(fps())))
 local cap = IS_WEB and 3000 or 100000
+local portrait = SCREEN_W < SCREEN_H             -- phone held upright
 ```
 
 ---
@@ -272,9 +279,12 @@ Filled rectangle.
 | `color` | `{0,0,0,180}` | |
 | `radius` | `0` | corner radius |
 
-### `ui.image(imageId, x, y, w, h)`
+### `ui.image(image, x, y, w, h [, zIndex])`
 
-Draw a loaded [image](#images) at `(x, y)` sized `w × h`.
+Draw a loaded [image](#images) at `(x, y)` sized `w × h`. `image` is a friendly
+name string (preferred) or a raw id. The optional `zIndex` (default `750`) lifts
+it above other layers — the demo picker uses `870` so a screenshot sits over its
+tile button.
 
 ### `ui.button(...)` — two forms
 
@@ -286,12 +296,21 @@ Returns `true` on the frame it is clicked/tapped.
 ui.button(id, x, y, w, h, label [, opts])
 ```
 
-| opt | default |
-|---|---|
-| `size` | `40` |
-| `color` | `{40,40,60,255}` |
-| `hover_color` | `{70,70,110,255}` |
-| `text_color` | white |
+| opt | default | |
+|---|---|---|
+| `size` | `40` | label font size |
+| `color` | `{40,40,60,255}` | background |
+| `hover_color` | `{70,70,110,255}` | background when hovered/selected |
+| `text_color` | white | |
+| `border` | `0` | base border width (0 = none) |
+| `border_hot` | `border` | border width when hovered or `selected` |
+| `border_color` | white | |
+| `radius` | `8` | corner radius |
+| `selected` | `false` | force the hovered look (for keyboard selection) |
+
+The thin-frame menu look (tiles, portrait buttons) uses a transparent `color`
+with `border`/`border_hot` so the white frame thickens on hover or when
+`selected` is set by the keyboard cursor.
 
 **In-flow** (inside a `ui.panel`) — pass a string label as the 2nd arg:
 
@@ -325,45 +344,40 @@ but are available directly.
 
 ## Declarative view runtime
 
-For menus, structure/look can be authored as a tree + stylesheet (think
-"HTML + CSS"), kept separate from behavior. The walker maps each node to the
-`ui.*` calls above.
+The menus are authored declaratively, as a **tree of nodes + a stylesheet**
+(think "HTML + CSS"), kept in a separate `*_view.lua` layout file. A scene script
+imports that file, `mount`s each screen, binds its button ids to actions, and
+calls `view:render()` each frame.
 
-```lua
-local view = mount({
-  styles = { ... },          -- class name -> style table (see below)
-  tree   = { ... },          -- nodes
-})
-view:on("play", function() goto_scene("play") end)   -- bind a button id -> action
-                            -- (chainable: :on(...):on(...))
-function on_ui() view:render() end
+### Is this a Clay interface?
+
+Not directly — it's two layers above Clay:
+
+```
+Clay  (C immediate-mode layout engine: boxes, flexbox-style sizing, z-order)
+  ▲
+ui.*  (thin Lua bindings — each call emits exactly one Clay element this frame)
+  ▲
+view runtime  (pure Lua: walks a node tree and emits the matching ui.* calls)
 ```
 
-| Function | Description |
-|---|---|
-| `mount(spec)` | Build a view from `spec.tree` + `spec.styles`. Returns the view. |
-| `view:on(id, fn)` | Bind button `id` to `fn`. Returns the view (chainable). |
-| `view:render()` | Emit the tree this frame. |
-| `style(a, b, ...)` | Merge style tables left-to-right (later overrides earlier); returns a new table. |
+The view runtime never touches Clay. It only translates each node into an
+`ui.panel` / `ui.label` / `ui.button` / … call (see
+[the toolkit above](#immediate-mode-ui-ui)); those bindings are what talk to
+Clay. So the declarative tree is sugar over the immediate-mode toolkit, which is
+itself a small façade over Clay. Anything the tree can express, you could write
+by hand as `ui.*` calls — and where the tree model doesn't fit, you do exactly
+that (see [Escape hatch](#escape-hatch-imperative-ui)).
 
-### Nodes
+This layering is deliberate: the layout file holds **structure + look**, the
+scene file holds **behavior**. Neither knows the other's internals; they meet
+only through button **ids**.
 
-A node is a table: `{ tag = ..., class = ..., ... }`.
-
-| `tag` | Renders as | Relevant fields |
-|---|---|---|
-| `panel` | `ui.panel` container | `class`, `style`, `children` |
-| `list` | same as `panel` | `class`, `style`, `children` |
-| `label` | `ui.label` | `text`, `class`, `style` |
-| `button` | `ui.button` (in-flow) | `id`, `text`, `class`, `style` |
-| `image` | `ui.image` | `image`, `x`, `y`, `w`, `h` |
-| `text` | `ui.text` | `text`, `x`, `y`, `class`, `style` |
-| `rect` | `ui.rect` | `x`, `y`, `w`, `h`, `class`, `style` |
-
-A node's final style is its `class` (looked up in `styles`) cascaded with any
-inline `style = { ... }` (inline wins).
+### The split, end to end
 
 ```lua
+-- scripts/menu_view.lua  — structure + styles, no behavior. Returns a table of
+-- screens; each screen is a { styles = ..., tree = ... } spec.
 local styles = {
   screen = { width = "grow", height = "grow", dir = "column",
              pad = { top = 200, left = 100 }, gap = 64, color = { 0, 0, 0, 255 } },
@@ -371,16 +385,152 @@ local styles = {
   list   = { width = 300, height = "grow", dir = "column" },
   item   = { size = 54, height = "grow", align = "left" },
 }
-local tree = {
-  { tag = "panel", class = "screen", children = {
-    { tag = "label",  class = "title", text = "FIRE SKELETON" },
-    { tag = "list",   class = "list", children = {
-      { tag = "button", id = "play", class = "item", text = "PLAY" },
-      { tag = "button", id = "exit", class = "item", text = "EXIT" },
-    } },
-  } },
+return {
+  menu = {
+    styles = styles,
+    tree = {
+      { tag = "panel", class = "screen", children = {
+        { tag = "label",  class = "title", text = "FIRE SKELETON" },
+        { tag = "list",   class = "list", children = {
+          { tag = "button", id = "play", class = "item", text = "PLAY" },
+          { tag = "button", id = "exit", class = "item", text = "EXIT" },
+        } },
+      } },
+    },
+  },
 }
 ```
+
+```lua
+-- scripts/menu.lua  — behavior. Mount once, bind ids, render each frame.
+local L = require("menu_view")
+local main = mount(L.menu)
+  :on("play", function() goto_scene("demos") end)   -- chainable
+  :on("exit", quit)
+
+function on_ui()  main:render()  end
+```
+
+### API
+
+| Function | Description |
+|---|---|
+| `mount(spec)` | Build a view from `spec.tree` + `spec.styles`. Collects button ids (in tree order) for keyboard nav. Returns the view. |
+| `view:on(id, fn)` | Bind button `id` to a click/activate handler. Returns the view (chainable). |
+| `view:render()` | Walk the tree and emit it this frame. Call inside `on_ui()`. |
+| `view:nav(d)` | Move the keyboard cursor by `d` (`-1`/`+1`) over the view's buttons, with wraparound. |
+| `view:activate()` | Fire the handler under the cursor (e.g. on Enter). |
+| `view.cursor` | Field: the 1-based index of the highlighted button. Set it before `render()`; the cursored button is auto-bolded. |
+| `style(a, b, ...)` | Merge style tables left-to-right (later overrides earlier); returns a new table. Useful for building style variants. |
+
+### Nodes
+
+A node is a table: `{ tag = ..., class = ..., ... }`. The `tag` picks the
+renderer; everything else is fields.
+
+| `tag` | Renders as | In-flow? | Relevant fields |
+|---|---|---|---|
+| `panel` | `ui.panel` container | yes | `class`, `style`, `children` |
+| `list` | same as `panel` | yes | `class`, `style`, `children` |
+| `label` | `ui.label` | yes | `text`, `class`, `style` |
+| `button` | `ui.button` (in-flow) | yes | `id`, `text`, `class`, `style` |
+| `image` | `ui.image` | **no — floating** | `image`, `x`, `y`, `w`, `h` |
+| `text` | `ui.text` | **no — floating** | `text`, `x`, `y`, `class`, `style` |
+| `rect` | `ui.rect` | **no — floating** | `x`, `y`, `w`, `h`, `class`, `style` |
+
+`panel`/`list`/`label`/`button` participate in Clay's flow layout (parents size
+and arrange them via `dir`/`gap`/`pad`/`align`). `image`/`text`/`rect` are
+**floating**: they ignore the surrounding flow and are placed at absolute logical
+`(x, y)` — so put those coordinates on the node, not in its class. (`list` is
+just an alias for `panel`; the two are identical, named apart only for
+readability.)
+
+### Styling: the cascade
+
+A node's final style is `styles[class]` **cascaded with** any inline
+`style = { ... }` on the node (inline keys win). A node with no `class` and no
+`style` gets an empty style (toolkit defaults apply).
+
+```lua
+{ tag = "list", class = "list", style = { width = 480 }, children = items }
+--                     ^ base from stylesheet      ^ this overrides just width
+```
+
+The full set of style keys (sizing, layout, padding, text, appearance) is the
+same one the toolkit accepts — see [Style reference](#style-reference).
+
+### Keyboard navigation
+
+`mount` walks the tree once and records every `button` id **in tree order** into
+`view.buttons`. That ordered list is what the cursor moves over:
+
+- `view.cursor` is a 1-based index into it; `render()` bolds the button at that
+  index (`font = 1`), matching the mouse-hover look so both input methods read
+  the same.
+- `view:nav(-1)` / `view:nav(1)` move the cursor up/down with wraparound.
+- `view:activate()` fires the handler bound to the cursored id (does nothing if
+  that id has no handler).
+
+Mouse/touch clicks work independently of the cursor — a click on any button
+fires its handler regardless of where the cursor is. The scene owns cursor
+**persistence**: `scripts/menu.lua` keeps a `cursor[sceneName]` table, restores
+it into `view.cursor` before `render()`, and resets it on entering a screen.
+
+```lua
+function on_key(key)
+  local v = current_view()
+  v.cursor = cursor[scene] or 1
+  if     key == "up"   then v:nav(-1)
+  elseif key == "down" then v:nav(1)
+  elseif key == "return" then v:activate(); return end
+  cursor[scene] = v.cursor
+end
+```
+
+### Dynamic views: re-mount per frame
+
+`mount` is cheap (the menu is not a hot path), so a screen whose **content**
+changes each frame can just be rebuilt every frame instead of mutated. The VIDEO
+screen does this to reflect live fullscreen state / the active resolution: it
+constructs the tree, `mount`s it, binds handlers, and returns the fresh view —
+all inside `on_ui`'s helper. Re-mounting also re-collects the button list, so
+keyboard nav stays correct as items appear/disappear.
+
+You can also **mutate the tree before mounting** for static, build-time
+conditionals — e.g. stripping the EXIT button on the web build (a page can't
+close its own tab) before the one-time `mount`.
+
+### Escape hatch: imperative UI
+
+The tree covers text-and-box menus. When a screen needs something it can't
+express — a thumbnail tile (image + caption + click target as one cell), a
+free-form responsive layout, per-item geometry — drop to the `ui.*` toolkit
+directly inside `on_ui()`. The demo picker (a screenshot tile grid) and the
+portrait main menu are built this way; they share the same `ui.button` /
+`ui.image` / `ui.text` primitives the view runtime emits, just driven by your
+own loop and math. Declarative and imperative screens coexist in one scene file —
+branch on `scene()` and render whichever fits.
+
+### Engine-injected BACK button
+
+In **level scenes on the web build**, the engine itself draws an on-screen BACK
+button each frame (the prelude's `__ui_back`, bottom-left) so touch devices with
+no Esc key can leave a demo. You don't add it to your tree — it's automatic, web
++ level scenes only. Desktop uses Esc/Q instead (handled in C).
+
+### Gotchas
+
+- **Buttons need a unique `id`.** It's both the Clay element id (hit-testing) and
+  the handler key. A `button` with no `id`, or whose `id` has no `:on` handler,
+  renders and highlights but does nothing when clicked/activated.
+- **Floating nodes don't flow.** `image`/`text`/`rect` are positioned absolutely;
+  they won't be laid out by a parent panel. Mixing them into a `children` list is
+  fine, but their `x`/`y` are logical-space coordinates, not offsets within the
+  parent.
+- **Coordinates are adaptive.** `SCREEN_W` changes with the window aspect ratio
+  (see [Conventions](#conventions)); compute absolute positions from
+  `SCREEN_W`/`SCREEN_H` rather than hard-coding, or the layout drifts off-centre
+  in fullscreen / on phones.
 
 ---
 
@@ -428,14 +578,25 @@ pad = { top = 200, left = 100 }   -- named (any subset)
 
 ## Images
 
-Sprites and `ui.image` take an image id. Friendly names map to ids:
+Images are **auto-discovered**: at startup the engine scans `assets/images/` for
+every `*.png`, sorts them by filename, and loads each as a texture. There is no
+manifest to edit and no fixed id list — **to add an image, drop a `.png` into
+`assets/images/`** and address it by its filename stem (the name without
+`.png`).
 
-| id | names | asset |
-|---|---|---|
-| `0` | `"skeleton"`, `"menu"` | `MenuFireSkeleton.png` |
-| `1` | `"sheet"`, `"sprite"` | `SpriteSheet1.png` |
+`shot_cube.png` → `"shot_cube"`, `skeleton.png` → `"skeleton"`. Names are how
+both sprites and `ui.image` refer to images:
 
 ```lua
 prefab "Player" { Transform = { w = 64, h = 64 }, Sprite = { image = "skeleton" } }
-ui.image(0, SCREEN_W - 550, 150, 450, 644)     -- by id
+ui.image("skeleton", SCREEN_W - 550, 150, 450, 644)    -- by name
+ui.image("shot_cube", x, y, w, h, 870)                 -- thumbnail above a tile
 ```
+
+Raw numeric ids still work (an image's id is its index in the sorted scan), but
+they shift whenever files are added or renamed — **prefer names**. An unknown
+name resolves to id `0` for sprites; `ui.image` with an out-of-range id draws
+nothing.
+
+The current bundled set: `skeleton`, `sprite`, and the demo-picker thumbnails
+`shot_invaders` / `shot_slots` / `shot_benchmark` / `shot_cube`.
