@@ -2,9 +2,12 @@
 #include "game.h"               // g_logical_w/h + SDL types (via main.h)
 #include "materials/materials.h"  // card materials (per-pixel shaders)
 
+#include <SDL3_image/SDL_image.h>  // IMG_Load (card art surfaces)
 #include <lua.h>
 #include <lauxlib.h>
 #include <math.h>
+#include <string.h>
+#include <stdio.h>
 
 // Perspective camera. The camera sits at g_cam_* looking along +z; the focal
 // length is derived from the vertical field of view, so the scene controls
@@ -40,16 +43,42 @@ static int    g_ntris;
 // to make/lock the texture).
 #define G3D_MAX_CARDS 64
 typedef struct {
-  SDL_FPoint p[4];     // projected corners: TL, TR, BR, BL
-  int   material;
-  float rx, ry;        // card rotation -> view-dependent shading
-  float facing;        // 0..1, how square-on to the camera (edge-on dims)
+  SDL_FPoint   p[4];   // projected corners: TL, TR, BR, BL
+  int          material;
+  float        rx, ry; // card rotation -> view-dependent shading
+  float        facing; // 0..1, how square-on to the camera (edge-on dims)
+  SDL_Surface *base;   // optional card-art image (CPU pixels), NULL = procedural
 } G3DCard;
 static G3DCard      g_cards[G3D_MAX_CARDS];
 static int          g_ncards;
 static SDL_Texture *g_card_pool[G3D_MAX_CARDS];   // lazily created, one per slot
 
 void g3d_begin_frame(void) { g_nlines = 0; g_ntris = 0; g_ncards = 0; }
+
+// Card-art cache: load assets/images/<name>.png once as a CPU surface (ARGB8888)
+// so a material can sample it per pixel. Cached by name (NULL result cached too,
+// so a missing file isn't retried every frame).
+#define G3D_MAX_ART 16
+static struct { char name[48]; SDL_Surface *surf; } g_art[G3D_MAX_ART];
+static int g_nart;
+
+static SDL_Surface *load_card_art(const char *name) {
+  for (int i = 0; i < g_nart; i++)
+    if (!strcmp(g_art[i].name, name)) return g_art[i].surf;
+  if (g_nart >= G3D_MAX_ART) return NULL;
+
+  char path[128];
+  snprintf(path, sizeof path, "assets/images/%s.png", name);
+  SDL_Surface *s = IMG_Load(path), *conv = NULL;
+  if (s) {
+    conv = SDL_ConvertSurface(s, SDL_PIXELFORMAT_ARGB8888);
+    SDL_DestroySurface(s);
+  }
+  snprintf(g_art[g_nart].name, sizeof g_art[g_nart].name, "%s", name);
+  g_art[g_nart].surf = conv;
+  g_nart++;
+  return conv;
+}
 
 // Lazily create the streaming texture for card slot i.
 static SDL_Texture *card_texture(SDL_Renderer *r, int i) {
@@ -104,10 +133,16 @@ void g3d_flush(struct SDL_Renderer *renderer) {
     G3DCard *c = &g_cards[i];
     SDL_Texture *tex = card_texture(renderer, i);
     if (!tex) continue;
+    const Uint32 *bpx = NULL; int bw = 0, bh = 0, bstride = 0;
+    if (c->base) {
+      bpx = (const Uint32 *)c->base->pixels;
+      bw = c->base->w; bh = c->base->h; bstride = c->base->pitch / 4;
+    }
     void *px; int pitch;
     if (SDL_LockTexture(tex, NULL, &px, &pitch)) {
       // vx/vy are the view tilt: the card's own ry/rx.
-      material_shade((Uint32 *)px, pitch, c->material, c->ry, c->rx, c->facing, t);
+      material_shade((Uint32 *)px, pitch, c->material, c->ry, c->rx, c->facing, t,
+                     bpx, bw, bh, bstride);
       SDL_UnlockTexture(tex);
     }
     int idx[6] = { 0, 1, 2, 0, 2, 3 };
@@ -377,9 +412,14 @@ static int l_card(lua_State *L) {
   // material = "holo"|"chrome"|"glass" picks a per-pixel shaded surface; without
   // it the card is a plain flat-shaded quad (cheap, no texture).
   int mat = MAT_FLAT;
+  SDL_Surface *base = NULL;
   if (t) {
     lua_getfield(L, t, "material");
     if (lua_isstring(L, -1)) mat = material_from_name(lua_tostring(L, -1));
+    lua_pop(L, 1);
+    // material="..." with an art image -> the material blends over the picture.
+    lua_getfield(L, t, "image");
+    if (lua_isstring(L, -1)) base = load_card_art(lua_tostring(L, -1));
     lua_pop(L, 1);
   }
 
@@ -409,6 +449,7 @@ static int l_card(lua_State *L) {
       for (int i = 0; i < 4; i++) cd->p[i] = (SDL_FPoint){ P[i][0], P[i][1] };
       cd->material = mat;
       cd->rx = rx; cd->ry = ry; cd->facing = facing;
+      cd->base = base;
     }
     return 0;
   }

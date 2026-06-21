@@ -9,12 +9,12 @@
 -- card is a flat colour so the motion can be judged on its own.
 
 local CARDS = {
-  { name = "HOLO",   material = "holo"   },
-  { name = "CHROME", material = "chrome" },
-  { name = "GLASS",  material = "glass"  },
+  { name = "AKROMA",     material = "holo",   image = "akroma"     },
+  { name = "LORD OF THE PIT", material = "chrome", image = "lordofpit" },
+  { name = "NICOL BOLAS", material = "glass",  image = "nicolbolas" },
 }
 
-local CW, CH  = 0.82, 1.18   -- card size in world units (portrait playing card)
+local CW, CH  = 0.85, 1.18   -- card size in world units (MTG aspect ~0.72)
 local GAP     = 1.45         -- horizontal spacing between card centres
 local BASE_Y  = -0.10        -- resting vertical position
 
@@ -112,11 +112,7 @@ function on_ui()
     local p = pose[i]
     if p then
       g3d.card(p.x, p.y, p.z, CW, CH,
-        { material = CARDS[i].material, rx = p.rx, ry = p.ry })
-      -- Caption under the resting position.
-      local sx, sy = g3d.project(p.x, BASE_Y - CH * 0.5, 0)
-      local name = CARDS[i].name
-      ui.text(sx - (#name * 26 * 0.6) / 2, sy + 16, name, { size = 26, font = 1 })
+        { material = CARDS[i].material, image = CARDS[i].image, rx = p.rx, ry = p.ry })
     end
   end
 end

@@ -11,8 +11,9 @@
 enum { MAT_FLAT = 0, MAT_HOLO, MAT_CHROME, MAT_GLASS };
 
 // Texture resolution the shaders paint into (the quad scales it on screen).
-#define CARD_TEX_W 176
-#define CARD_TEX_H 254
+// Aspect ~0.72 to match a real card (and the MTG art used as a base).
+#define CARD_TEX_W 184
+#define CARD_TEX_H 256
 
 // Map a material name ("holo"|"chrome"|"glass") to its id; MAT_FLAT if unknown
 // or NULL.
@@ -21,9 +22,14 @@ int material_from_name(const char *name);
 // Fill `pixels` (ARGB8888, CARD_TEX_W x CARD_TEX_H, row stride `pitch` bytes)
 // with `material`. vx/vy are the view tilt taken from the card's rotation (so
 // reflections/rainbow slide as it turns), `facing` (0..1) dims an edge-on card,
-// and `t` is seconds for animation. Corners are rounded (transparent) and a thin
-// frame is baked just inside the edge.
+// and `t` is seconds for animation. Corners are rounded (transparent).
+//
+// If `base` is non-NULL it is a card-art image (ARGB8888, base_w x base_h, row
+// stride base_stride in Uint32s): the material then blends OVER the art as a
+// foil/reflection/glass overlay instead of painting a procedural surface, and
+// no synthetic frame is drawn (the art carries its own).
 void material_shade(Uint32 *pixels, int pitch, int material,
-                    float vx, float vy, float facing, float t);
+                    float vx, float vy, float facing, float t,
+                    const Uint32 *base, int base_w, int base_h, int base_stride);
 
 #endif
